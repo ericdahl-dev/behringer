@@ -1,0 +1,4 @@
+tasksDir: tasks
+idPrefix: LNK
+zeroPaddedIds: 3
+statuses: [todo, doing, done]
