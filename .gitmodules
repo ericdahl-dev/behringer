@@ -1,0 +1,6 @@
+[submodule "src"]
+	path = src
+	url = https://github.com/pmaillot/X32-Behringer
+[submodule "esp32-link/lib/link"]
+	path = esp32-link/lib/link
+	url = https://github.com/Ableton/link
