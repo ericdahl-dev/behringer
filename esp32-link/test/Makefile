@@ -18,6 +18,7 @@ all: test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_
 	./test_app_config
 	./test_osc_out
 	./test_midi_bpm_calc
+	./check_docs.sh
 
 test_bpm_tracker: test_bpm_tracker.c $(TRACKER) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
