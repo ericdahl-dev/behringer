@@ -1,4 +1,4 @@
-# esp32-link — Agent Guide
+# esp32 — Agent Guide
 
 ## What this firmware is
 
@@ -12,11 +12,12 @@ runtime from the web UI:
 - **USB MIDI clock** — acts as a USB-MIDI device and derives BPM from 24-PPQN
   clock pulses from a DAW.
 
+Also contains the **X32 emulator** (`X32_emulator/`) used for on-device testing.
+
 ## What this firmware is NOT
 
-Not the X32 emulator (that lives in `esp32/`, `ESP-` tasks) and not the CLI
-tools (`cli/`, root `T-` tasks). This is the on-board tempo→OSC bridge only.
-Don't edit `esp32/` or `cli/` when working here.
+Not the CLI tools (`cli/`, root `T-` tasks). This is the on-board tempo→OSC
+bridge and emulator only. Don't edit `cli/` when working here.
 
 ## Build / flash / test
 
@@ -41,8 +42,7 @@ Notes:
 - OSC target: `/fx/{slot}/par/01 ,f {normalized}` (delay-time parameter).
 - Port: **XR18 → 10024**, **X32 → 10023** (`app_config.c:config_model_port`).
 - Normalization lives in `osc_out.c:bpm_to_normalized()` — delay ms = 60000/BPM,
-  clamped to 3000 ms, scaled to 0.0–1.0. (Same intent as `cli/` ToastSaver's
-  ms→normalized; duplicated here because Arduino sketches can't share `cli/`.)
+  clamped to 3000 ms, scaled to 0.0–1.0.
 
 ## Modules (roles — the directory is the source of truth for the file list)
 
@@ -57,6 +57,7 @@ Notes:
 | `app_config.*` · `app_config_nvs.cpp` | config struct, validation, NVS persistence (incl. `input_source`) |
 | `web_config.*` | rack-panel config web UI + captive portal + `/status` live-BPM endpoint |
 | `config.h` | per-firmware constants (Link/MIDI timing, first-boot defaults) |
+| `X32_emulator/` | X32 on-device emulator for integration tests |
 
 Shared C files are real in `X32Link/` and **symlinked** into `X32MidiClock/`
 (Arduino sketches must be flat dirs); the `midi_*` files are the reverse.
@@ -70,5 +71,6 @@ Shared C files are real in `X32Link/` and **symlinked** into `X32MidiClock/`
 
 ## Ordna tasks
 
-`esp32-link/tasks/`, `LNK-` (Link firmware) and `MCK-` (standalone MIDI clock)
-IDs. See root `AGENTS.md` for the Ordna format/CLI.
+`esp32/tasks/`, prefixes: `LNK-` (Link firmware), `MCK-` (standalone MIDI clock),
+`TSV-` (ToastSaver hardware), `ESP-` (emulator). See root `AGENTS.md` for the
+Ordna format/CLI.
