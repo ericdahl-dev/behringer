@@ -1,0 +1,98 @@
+#include "unity.h"
+#include "app_config.h"
+#include <string.h>
+
+void setUp(void)    {}
+void tearDown(void) {}
+
+void test_defaults_model_is_xr18(void) {
+    AppConfig cfg;
+    config_defaults(&cfg);
+    TEST_ASSERT_EQUAL_INT(MODEL_XR18, cfg.model);
+}
+
+void test_defaults_fx_slot_is_1(void) {
+    AppConfig cfg;
+    config_defaults(&cfg);
+    TEST_ASSERT_EQUAL_INT(1, cfg.fx_slot);
+}
+
+void test_defaults_ip_set(void) {
+    AppConfig cfg;
+    config_defaults(&cfg);
+    TEST_ASSERT_TRUE(cfg.mixer_ip[0] != '\0');
+}
+
+void test_xr18_port(void) {
+    TEST_ASSERT_EQUAL_INT(10024, config_model_port(MODEL_XR18));
+}
+
+void test_x32_port(void) {
+    TEST_ASSERT_EQUAL_INT(10023, config_model_port(MODEL_X32));
+}
+
+void test_xr18_slot_max(void) {
+    TEST_ASSERT_EQUAL_INT(4, config_model_slot_max(MODEL_XR18));
+}
+
+void test_x32_slot_max(void) {
+    TEST_ASSERT_EQUAL_INT(8, config_model_slot_max(MODEL_X32));
+}
+
+void test_validate_rejects_slot_zero(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.fx_slot = 0;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_rejects_slot_above_max_xr18(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model   = MODEL_XR18;
+    cfg.fx_slot = 5;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_rejects_slot_above_max_x32(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model   = MODEL_X32;
+    cfg.fx_slot = 9;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_rejects_empty_ip(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.mixer_ip[0] = '\0';
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_accepts_valid_xr18(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model   = MODEL_XR18;
+    cfg.fx_slot = 4;
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
+void test_validate_accepts_valid_x32(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model   = MODEL_X32;
+    cfg.fx_slot = 8;
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
+int main(void) {
+    UNITY_BEGIN();
+    RUN_TEST(test_defaults_model_is_xr18);
+    RUN_TEST(test_defaults_fx_slot_is_1);
+    RUN_TEST(test_defaults_ip_set);
+    RUN_TEST(test_xr18_port);
+    RUN_TEST(test_x32_port);
+    RUN_TEST(test_xr18_slot_max);
+    RUN_TEST(test_x32_slot_max);
+    RUN_TEST(test_validate_rejects_slot_zero);
+    RUN_TEST(test_validate_rejects_slot_above_max_xr18);
+    RUN_TEST(test_validate_rejects_slot_above_max_x32);
+    RUN_TEST(test_validate_rejects_empty_ip);
+    RUN_TEST(test_validate_accepts_valid_xr18);
+    RUN_TEST(test_validate_accepts_valid_x32);
+    return UNITY_END();
+}

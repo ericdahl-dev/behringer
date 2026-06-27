@@ -1,0 +1,31 @@
+#pragma once
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define MODEL_XR18  1
+#define MODEL_X32   2
+
+typedef struct {
+    char wifi_ssid[64];
+    char wifi_pass[64];
+    char mixer_ip[16];
+    int  model;    // MODEL_XR18 or MODEL_X32
+    int  fx_slot;  // 1–4 (XR18) or 1–8 (X32)
+} AppConfig;
+
+void config_defaults(AppConfig* cfg);
+int  config_model_port(int model);
+int  config_model_slot_max(int model);
+bool config_validate(const AppConfig* cfg);
+
+// NVS-backed persistence (implemented in app_config_nvs.cpp)
+void config_load(AppConfig* cfg);
+void config_save(const AppConfig* cfg);
+void config_clear(void);
+
+#ifdef __cplusplus
+}
+#endif

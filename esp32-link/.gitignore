@@ -1,0 +1,8 @@
+# Arduino build output
+**/build/
+
+# Host unit-test binaries (test/Makefile builds these)
+test/test_app_config
+test/test_bpm_tracker
+test/test_link_protocol
+test/test_osc_out

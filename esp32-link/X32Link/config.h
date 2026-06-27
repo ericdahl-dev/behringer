@@ -1,15 +1,15 @@
 #pragma once
 
-// WiFi — 2.4 GHz only (ESP32-S3 does not support 5 GHz)
-#define WIFI_SSID            "X32-Emulator"
-#define WIFI_PASS            ""
+// Link timing — internal, not user-configurable
+#define LINK_DEFAULT_BPM     120.0f
+#define LINK_BPM_THRESHOLD   0.5f
+#define LINK_POLL_MS         50
+#define LINK_SEND_INTERVAL_MS 500
+#define LINK_REFRESH_BARS     1
 
-// X32 emulator (XIAO ESP32-S3 SoftAP at 192.168.4.1)
-#define XR18_IP              "192.168.4.1"
-#define XR18_PORT            10023
-
-// Ableton Link → FX slot
-#define LINK_FX_SLOT         1           // FX slot 1–4; must be a delay type
-#define LINK_DEFAULT_BPM     120.0f      // initial tempo offered to Link session
-#define LINK_BPM_THRESHOLD   0.5f        // min BPM change that triggers an OSC write
-#define LINK_POLL_MS         50          // FreeRTOS task poll interval (ms)
+// First-boot defaults — overridden after first web config save
+#define DEFAULT_WIFI_SSID    "X32-Emulator"
+#define DEFAULT_WIFI_PASS    ""
+#define DEFAULT_MIXER_IP     "192.168.4.1"
+#define DEFAULT_MODEL        1    // MODEL_XR18
+#define DEFAULT_FX_SLOT      1

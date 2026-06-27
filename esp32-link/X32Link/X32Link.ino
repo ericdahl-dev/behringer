@@ -1,29 +1,167 @@
 #include <WiFi.h>
 #include "config.h"
+#include "app_config.h"
+#include "link_listener.h"
+#include "bpm_tracker.h"
+#include "osc_sender.h"
+#include "web_config.h"
 
-void setup() {
-    Serial.begin(115200);
-    delay(2000);   // give USB CDC time to connect to host
+#define LED_PIN      LED_BUILTIN
+#define LED_FLASH_MS 30
 
-    Serial.println("[X32Link] booting");
-    Serial.print("[X32Link] connecting to ");
-    Serial.println(WIFI_SSID);
+AppConfig g_config;
 
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+static SemaphoreHandle_t g_bpm_mutex;
+volatile float           g_current_bpm = LINK_DEFAULT_BPM;
+
+static void led_task(void*) {
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);  // HIGH = off on XIAO (active LOW)
+    uint32_t last_flash_ms = 0;
+    for (;;) {
+        xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
+        float bpm = g_current_bpm;
+        xSemaphoreGive(g_bpm_mutex);
+
+        if (bpm > 0.0f && link_listener_peers() > 0) {
+            uint32_t beat_ms = (uint32_t)(60000.0f / bpm);
+            uint32_t now = (uint32_t)millis();
+            if (now - last_flash_ms >= beat_ms) {
+                digitalWrite(LED_PIN, LOW);   // LOW = on
+                vTaskDelay(pdMS_TO_TICKS(LED_FLASH_MS));
+                digitalWrite(LED_PIN, HIGH);  // HIGH = off
+                last_flash_ms = now;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
+
+static void bpm_task(void*) {
+    uint32_t last_send_ms = 0;
+    uint32_t last_bar_ms  = 0;
+    for (;;) {
+        link_listener_poll();
+        link_listener_tick();  // expire peers that vanished without a ByeBye
+        float    bpm = (float)link_listener_bpm();
+        uint32_t now = (uint32_t)millis();
+
+        bool changed = bpm > 0.0f && bpm_tracker_update(bpm);
+        bool refresh = bpm > 0.0f && link_listener_peers() > 0 &&
+                       now - last_bar_ms >= (uint32_t)(4 * LINK_REFRESH_BARS * 60000.0f / bpm);
+
+        if ((changed || refresh) && (now - last_send_ms) >= LINK_SEND_INTERVAL_MS) {
+            osc_send_bpm(bpm);
+            last_send_ms = now;
+            if (refresh) last_bar_ms = now;
+            xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
+            g_current_bpm = bpm;
+            xSemaphoreGive(g_bpm_mutex);
+            Serial.printf("[X32Link] BPM %.2f → OSC sent%s\n", bpm, changed ? "" : " (refresh)");
+        }
+        if (changed) last_bar_ms = now;
+        vTaskDelay(pdMS_TO_TICKS(LINK_POLL_MS));
+    }
+}
+
+// Returns true if connected within 30 s, false on timeout.
+static bool wifi_try_connect() {
+    Serial.printf("[X32Link] connecting to %s\n", g_config.wifi_ssid);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(g_config.wifi_ssid, g_config.wifi_pass);
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        if (millis() - start > 30000) {
+            WiFi.disconnect(true);
+            return false;
+        }
+        delay(500);
+        Serial.print(".");
+    }
+    WiFi.setSleep(false);  // modem power-save drops buffered multicast — keep radio awake
+    Serial.println();
+    Serial.printf("[X32Link] IP: %s\n", WiFi.localIP().toString().c_str());
+    return true;
+}
+
+// Blocking reconnect used by loop() — no timeout (we have nowhere else to go).
+static void wifi_connect() {
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
+    // Already connected (called right after status check fails then recovers),
+    // or fall through from try_connect. Reinit if truly disconnected:
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.begin(g_config.wifi_ssid, g_config.wifi_pass);
+        while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+    }
     Serial.println();
-    Serial.print("[X32Link] IP: ");
+    Serial.printf("[X32Link] IP: %s\n", WiFi.localIP().toString().c_str());
+}
+
+static void start_config_ap() {
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("X32Link-Config");
+    Serial.printf("[X32Link] WiFi failed — AP started\n");
+    Serial.printf("[X32Link] join 'X32Link-Config' → http://%s\n",
+                  WiFi.softAPIP().toString().c_str());
+    web_config_ap_begin();
+    for (;;) web_config_handle();  // save handler calls ESP.restart()
+}
+
+static void check_factory_reset() {
+    pinMode(0, INPUT_PULLUP);
+    if (digitalRead(0) != LOW) return;
+    Serial.println("[X32Link] BOOT held — factory reset in 5s, release to cancel");
+    unsigned long t = millis();
+    while (digitalRead(0) == LOW && millis() - t < 5000) delay(100);
+    if (millis() - t >= 5000) {
+        config_clear();
+        Serial.println("[X32Link] NVS cleared — restarting");
+        ESP.restart();
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(2000);
+    Serial.println("[X32Link] booting");
+
+    check_factory_reset();
+    config_load(&g_config);
+    Serial.printf("[X32Link] model=%s slot=%d mixer=%s:%d\n",
+                  g_config.model == MODEL_X32 ? "X32" : "XR18",
+                  g_config.fx_slot, g_config.mixer_ip,
+                  config_model_port(g_config.model));
+
+    if (!wifi_try_connect()) start_config_ap();  // never returns on AP path
+
+    link_listener_begin();
+    osc_sender_begin();
+    bpm_tracker_init(0.0f, LINK_BPM_THRESHOLD);
+    g_bpm_mutex = xSemaphoreCreateMutex();
+    xTaskCreatePinnedToCore(bpm_task, "bpm", 4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(led_task, "led", 2048, NULL, 1, NULL, 0);
+    web_config_begin();
+
+    Serial.print("[X32Link] ready — config at http://");
     Serial.println(WiFi.localIP());
-    Serial.printf("[X32Link] XR18 target: %s:%d  FX slot: %d\n",
-                  XR18_IP, XR18_PORT, LINK_FX_SLOT);
 }
 
 void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[X32Link] WiFi lost — reconnecting");
+        wifi_connect();
+        link_listener_begin();
+        osc_sender_begin();
+    }
+    web_config_handle();
+    Serial.printf("[X32Link] ip:%s mcast:%d rx:%lu peers:%d bpm:%.2f heap:%lu\n",
+                  WiFi.localIP().toString().c_str(),
+                  link_listener_mcast_ok() ? 1 : 0,
+                  (unsigned long)link_listener_rx_count(),
+                  link_listener_peers(), g_current_bpm,
+                  (unsigned long)ESP.getFreeHeap());
     delay(5000);
-    Serial.printf("[X32Link] WiFi: %s  RSSI: %d dBm\n",
-                  WiFi.status() == WL_CONNECTED ? "OK" : "LOST",
-                  WiFi.RSSI());
 }

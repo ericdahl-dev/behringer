@@ -4,3 +4,6 @@
 [submodule "esp32-link/lib/link"]
 	path = esp32-link/lib/link
 	url = https://github.com/Ableton/link
+[submodule "esp32-link/lib/unity"]
+	path = esp32-link/lib/unity
+	url = https://github.com/ThrowTheSwitch/Unity.git
