@@ -1,3 +1,4 @@
+# Task prefixes in use: ESP (emulator), LNK (X32Link), MCK (MidiClock), TSV (ToastSaver-HW)
 tasksDir: tasks
 idPrefix: ESP
 zeroPaddedIds: 3
