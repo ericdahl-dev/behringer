@@ -6,3 +6,4 @@ test/test_app_config
 test/test_bpm_tracker
 test/test_link_protocol
 test/test_osc_out
+test/test_midi_bpm_calc

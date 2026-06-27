@@ -79,6 +79,29 @@ void test_validate_accepts_valid_x32(void) {
     TEST_ASSERT_TRUE(config_validate(&cfg));
 }
 
+void test_defaults_input_source_is_link(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    TEST_ASSERT_EQUAL_INT(0, cfg.input_source);  // 0 = Ableton Link
+}
+
+void test_validate_accepts_midi_source(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.input_source = 1;  // USB MIDI
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
+void test_validate_rejects_source_above_range(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.input_source = 2;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_rejects_negative_source(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.input_source = -1;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_defaults_model_is_xr18);
@@ -94,5 +117,9 @@ int main(void) {
     RUN_TEST(test_validate_rejects_empty_ip);
     RUN_TEST(test_validate_accepts_valid_xr18);
     RUN_TEST(test_validate_accepts_valid_x32);
+    RUN_TEST(test_defaults_input_source_is_link);
+    RUN_TEST(test_validate_accepts_midi_source);
+    RUN_TEST(test_validate_rejects_source_above_range);
+    RUN_TEST(test_validate_rejects_negative_source);
     return UNITY_END();
 }

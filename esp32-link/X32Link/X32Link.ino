@@ -1,12 +1,12 @@
 #include <WiFi.h>
 #include "config.h"
 #include "app_config.h"
-#include "link_listener.h"
+#include "tempo_source.h"
+#include "link_listener.h"  // for the loop() status counters (rx/mcast) in Link mode
 #include "bpm_tracker.h"
 #include "osc_sender.h"
 #include "web_config.h"
 
-#define LED_PIN      LED_BUILTIN
 #define LED_FLASH_MS 30
 
 AppConfig g_config;
@@ -14,22 +14,43 @@ AppConfig g_config;
 static SemaphoreHandle_t g_bpm_mutex;
 volatile float           g_current_bpm = LINK_DEFAULT_BPM;
 
+// Beat LED. ESP32-S3 Super Mini: a plain LED on GPIO48, active-HIGH (proven by
+// the original MIDI firmware). Define LED_ACTIVE_LOW for an active-low board
+// (e.g. XIAO), or LED_RGB for a board with an addressable WS2812.
+#define LED_PIN_NUM 48
+
+static void led_set(bool on) {
+#if defined(LED_RGB)
+    rgbLedWrite(LED_PIN_NUM, 0, on ? 40 : 0, 0);   // green beat
+#elif defined(LED_ACTIVE_LOW)
+    digitalWrite(LED_PIN_NUM, on ? LOW : HIGH);
+#else
+    digitalWrite(LED_PIN_NUM, on ? HIGH : LOW);    // active-high (Super Mini)
+#endif
+}
+
+static void led_setup() {
+#if !defined(LED_RGB)
+    pinMode(LED_PIN_NUM, OUTPUT);
+#endif
+    led_set(false);
+}
+
 static void led_task(void*) {
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, HIGH);  // HIGH = off on XIAO (active LOW)
+    led_setup();
     uint32_t last_flash_ms = 0;
     for (;;) {
         xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
         float bpm = g_current_bpm;
         xSemaphoreGive(g_bpm_mutex);
 
-        if (bpm > 0.0f && link_listener_peers() > 0) {
+        if (bpm > 0.0f && tempo_source_active()) {
             uint32_t beat_ms = (uint32_t)(60000.0f / bpm);
             uint32_t now = (uint32_t)millis();
             if (now - last_flash_ms >= beat_ms) {
-                digitalWrite(LED_PIN, LOW);   // LOW = on
+                led_set(true);
                 vTaskDelay(pdMS_TO_TICKS(LED_FLASH_MS));
-                digitalWrite(LED_PIN, HIGH);  // HIGH = off
+                led_set(false);
                 last_flash_ms = now;
             }
         }
@@ -41,13 +62,12 @@ static void bpm_task(void*) {
     uint32_t last_send_ms = 0;
     uint32_t last_bar_ms  = 0;
     for (;;) {
-        link_listener_poll();
-        link_listener_tick();  // expire peers that vanished without a ByeBye
-        float    bpm = (float)link_listener_bpm();
+        tempo_source_poll();
+        float    bpm = tempo_source_bpm();
         uint32_t now = (uint32_t)millis();
 
         bool changed = bpm > 0.0f && bpm_tracker_update(bpm);
-        bool refresh = bpm > 0.0f && link_listener_peers() > 0 &&
+        bool refresh = bpm > 0.0f && tempo_source_active() &&
                        now - last_bar_ms >= (uint32_t)(4 * LINK_REFRESH_BARS * 60000.0f / bpm);
 
         if ((changed || refresh) && (now - last_send_ms) >= LINK_SEND_INTERVAL_MS) {
@@ -57,10 +77,10 @@ static void bpm_task(void*) {
             xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
             g_current_bpm = bpm;
             xSemaphoreGive(g_bpm_mutex);
-            Serial.printf("[X32Link] BPM %.2f → OSC sent%s\n", bpm, changed ? "" : " (refresh)");
+            Serial.printf("[X32Sync] BPM %.2f → OSC sent%s\n", bpm, changed ? "" : " (refresh)");
         }
         if (changed) last_bar_ms = now;
-        vTaskDelay(pdMS_TO_TICKS(LINK_POLL_MS));
+        vTaskDelay(pdMS_TO_TICKS(tempo_source_poll_ms()));
     }
 }
 
@@ -130,16 +150,20 @@ void setup() {
 
     check_factory_reset();
     config_load(&g_config);
-    Serial.printf("[X32Link] model=%s slot=%d mixer=%s:%d\n",
+    Serial.printf("[X32Sync] src=%s model=%s slot=%d mixer=%s:%d\n",
+                  g_config.input_source == TEMPO_SRC_MIDI ? "MIDI" : "LINK",
                   g_config.model == MODEL_X32 ? "X32" : "XR18",
                   g_config.fx_slot, g_config.mixer_ip,
                   config_model_port(g_config.model));
 
+    tempo_source_select(g_config.input_source);
+    tempo_source_pre_net();  // USB MIDI enumerates here (before WiFi); no-op for Link
+
     if (!wifi_try_connect()) start_config_ap();  // never returns on AP path
 
-    link_listener_begin();
+    tempo_source_begin();    // Link joins multicast here; no-op for MIDI
     osc_sender_begin();
-    bpm_tracker_init(0.0f, LINK_BPM_THRESHOLD);
+    bpm_tracker_init(0.0f, tempo_source_threshold());
     g_bpm_mutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(bpm_task, "bpm", 4096, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(led_task, "led", 2048, NULL, 1, NULL, 0);
@@ -151,17 +175,23 @@ void setup() {
 
 void loop() {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[X32Link] WiFi lost — reconnecting");
+        Serial.println("[X32Sync] WiFi lost — reconnecting");
         wifi_connect();
-        link_listener_begin();
+        tempo_source_begin();
         osc_sender_begin();
     }
-    web_config_handle();
-    Serial.printf("[X32Link] ip:%s mcast:%d rx:%lu peers:%d bpm:%.2f heap:%lu\n",
-                  WiFi.localIP().toString().c_str(),
-                  link_listener_mcast_ok() ? 1 : 0,
-                  (unsigned long)link_listener_rx_count(),
-                  link_listener_peers(), g_current_bpm,
-                  (unsigned long)ESP.getFreeHeap());
-    delay(5000);
+    web_config_handle();  // service the web server every ~20 ms so /status polling is live
+
+    static uint32_t last_log = 0;
+    uint32_t now = millis();
+    if (now - last_log >= 5000) {
+        last_log = now;
+        Serial.printf("[X32Link] ip:%s mcast:%d rx:%lu peers:%d bpm:%.2f heap:%lu\n",
+                      WiFi.localIP().toString().c_str(),
+                      link_listener_mcast_ok() ? 1 : 0,
+                      (unsigned long)link_listener_rx_count(),
+                      link_listener_peers(), g_current_bpm,
+                      (unsigned long)ESP.getFreeHeap());
+    }
+    delay(20);
 }
