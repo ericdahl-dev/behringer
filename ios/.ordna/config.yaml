@@ -1,0 +1,7 @@
+storage: file
+tasksDir: tasks
+schema: ordna
+statuses: [todo, doing, done]
+idPrefix: IOS
+zeroPaddedIds: 3
+webPort: 7421

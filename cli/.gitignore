@@ -1,0 +1,3 @@
+build/
+X32lib/*.o
+X32lib/*.a
