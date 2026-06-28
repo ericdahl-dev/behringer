@@ -79,3 +79,8 @@ firmwares depend on `LNK-013` (shared `osc_in` receive/subscribe module — the
 client-side `/xremote` path X32Link does not yet have). OSC node references for
 them live in `docs/xr18-xair-osc-cheatsheet.md` and `docs/x32-osc-protocol.md`.
 See root `AGENTS.md` for the Ordna format/CLI.
+
+Future/creative feature concepts (not yet tasks) are collected in
+`docs/ideas.md` — leans into the Ableton Link **phase** clock and the mic/RTA
+sensors. Proposed prefixes when those get scoped: `SNP-` `RLK-` `IEM-` `SPL-`
+`ABL-` `LGT-` `HAS-`.
