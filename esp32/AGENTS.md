@@ -72,5 +72,10 @@ Shared C files are real in `X32Link/` and **symlinked** into `X32MidiClock/`
 ## Ordna tasks
 
 `esp32/tasks/`, prefixes: `LNK-` (Link firmware), `MCK-` (standalone MIDI clock),
-`TSV-` (ToastSaver hardware), `ESP-` (emulator). See root `AGENTS.md` for the
-Ordna format/CLI.
+`TSV-` (ToastSaver hardware), `ESP-` (emulator), `FDR-` (X32FaderDisp — fader dB
+on scribble strips, X32-only), `MUT-` (X32SafeMutes — locked-mute guard),
+`ITT-` (MidiOscIttt — MIDI↔OSC rules bridge). The `FDR-`/`MUT-`/`ITT-` control
+firmwares depend on `LNK-013` (shared `osc_in` receive/subscribe module — the
+client-side `/xremote` path X32Link does not yet have). OSC node references for
+them live in `docs/xr18-xair-osc-cheatsheet.md` and `docs/x32-osc-protocol.md`.
+See root `AGENTS.md` for the Ordna format/CLI.
