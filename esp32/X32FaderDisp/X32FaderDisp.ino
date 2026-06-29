@@ -5,13 +5,12 @@
 #include "fader_disp.h"
 #include "web_config.h"
 
-AppConfig      g_config;
-volatile float g_current_bpm = 0.0f;   // unused here; satisfies the shared web_config
+AppConfig g_config;
 
-// osc_listener callback — log every message, then drive the scribble display.
+// osc_listener callback — log every message; drive the scribble display when on.
 static void on_osc(const osc_msg_t *m) {
     Serial.printf("[FDR] %s ,%s (%d)\n", m->address, m->tags ? m->tags : "", m->n_args);
-    fader_disp_handle(m);
+    if (g_config.fdr_enable) fader_disp_handle(m);
 }
 
 static bool wifi_try_connect() {
@@ -53,7 +52,7 @@ static void check_factory_reset() {
 static void start_listening() {
     int port = config_model_port(g_config.model);
     osc_listener_begin(g_config.mixer_ip, port, on_osc);
-    fader_disp_begin(FDR_CHAN_COUNT);
+    fader_disp_begin(g_config.fdr_chan_count);
 }
 
 void setup() {

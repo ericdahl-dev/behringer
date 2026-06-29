@@ -15,3 +15,5 @@
 #define DEFAULT_MODEL        1         // MODEL_XR18
 #define DEFAULT_FX_SLOT      1
 #define DEFAULT_INPUT_SOURCE 1         // TEMPO_SRC_MIDI (this firmware is MIDI-only)
+#define DEFAULT_FDR_ENABLE     0    // FaderDisp off on non-FDR firmware
+#define DEFAULT_FDR_CHAN_COUNT 32
