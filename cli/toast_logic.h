@@ -57,11 +57,11 @@ extern const int TOAST_GEQ_BIN[31];
 /* Map RTA bin index (0–99) to GEQ par number (1–31). */
 int bin_to_geq_par(int bin);
 
-/* Parse a /meters/4 OSC blob into bins[100] in dBFS.
+/* Parse a meters OSC blob into bins[100] in dBFS.
  * blob[0-3]: big-endian total byte count.
- * blob[4-7]: little-endian sample count (must equal 100).
- * blob[8+]:  100 × little-endian int16 samples.
- * Returns 0 on success, -1 if the packet is too short or n_vals != 100. */
+ * blob[4-7]: little-endian n_vals (100 for XR18/meters/4; 50 for X32/meters/15).
+ * blob[8+]:  100 × little-endian int16 samples (200 bytes in both cases).
+ * Returns 0 on success, -1 if packet is too short or n_vals is not 50 or 100. */
 int parse_meters4_blob(const uint8_t *blob, int blen, float *bins);
 
 /* Encode dB to GEQ float [0.0, 1.0].  0 dB → 0.5,  −15 dB → 0.0,  +15 dB → 1.0. */

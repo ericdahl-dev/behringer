@@ -144,15 +144,19 @@ int osc_query_node(OscConn *c, const char *node, char *out, int outsz) {
     return 0;
 }
 
-void osc_subscribe_meters4(OscConn *c) {
+void osc_subscribe_meters(OscConn *c, const char *meter_path) {
     char buf[OSC_BSIZE];
     int zero = 0;
     int len = 0;
     len = Xsprint(buf, len, 's', "/meters");
     len = Xsprint(buf, len, 's', ",siii");
-    len = Xsprint(buf, len, 's', "/meters/4");
+    len = Xsprint(buf, len, 's', (void *)meter_path);
     len = Xsprint(buf, len, 'i', &zero);
     len = Xsprint(buf, len, 'i', &zero);
     len = Xsprint(buf, len, 'i', &zero);
     sendto(c->fd, buf, len, 0, c->xip_addr, c->xip_len);
+}
+
+void osc_subscribe_meters4(OscConn *c) {
+    osc_subscribe_meters(c, "/meters/4");
 }

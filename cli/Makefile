@@ -16,7 +16,7 @@ X32lib:
 	@$(MAKE) -C $@ all
 
 XAir_ToastSaver: X32lib
-	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c ringout_logic.c ringout_profile.c mic_cal.c rta_bins.c osc_io.c tui.c $(LDFLAGS) -lncursesw
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c log.c toast_logic.c ringout_logic.c ringout_profile.c mic_cal.c rta_bins.c osc_io.c tui.c $(LDFLAGS) -lncursesw
 
 XAir: X32lib
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c $(LDFLAGS)
@@ -67,6 +67,9 @@ clean:
 
 .PHONY: $(DIRS) check clean dirs
 
-# Ring-out safety harness (T-025): mock X32 + synthetic feedback (integration)
+# Ring-out safety harness (T-025): mock mixer + synthetic feedback (integration)
 test-ringout-emu: XAir_ToastSaver
 	python3 test_ringout_emu.py $(BUILD)/XAir_ToastSaver
+
+test-ringout-emu-x32: XAir_ToastSaver
+	python3 test_ringout_emu.py $(BUILD)/XAir_ToastSaver --model x32

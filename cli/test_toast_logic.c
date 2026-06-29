@@ -78,12 +78,28 @@ int main(void) {
         ASSERT_INT_EQ("parse_meters4_blob: returns -1 for blob shorter than 8 bytes",
             parse_meters4_blob(blob, 7, bins), -1);
 
-        /* Wrong sample count: set n_vals = 44 (mimics /meters/5) */
+        /* Wrong sample count: 44 is not 50 or 100 */
         uint8_t bad[208];
         memcpy(bad, blob, sizeof(bad));
         bad[4] = 44; bad[5] = 0; bad[6] = 0; bad[7] = 0;
-        ASSERT_INT_EQ("parse_meters4_blob: returns -1 when n_vals != 100",
+        ASSERT_INT_EQ("parse_meters4_blob: returns -1 when n_vals is not 50 or 100",
             parse_meters4_blob(bad, sizeof(bad), bins), -1);
+    }
+
+    /* X32 format: n_vals=50 (50 × uint32 = 100 successive int16 LE) */
+    {
+        uint8_t blob50[208];
+        memset(blob50, 0, sizeof(blob50));
+        blob50[0] = 0; blob50[1] = 0; blob50[2] = 0; blob50[3] = 208;
+        blob50[4] = 50; blob50[5] = 0; blob50[6] = 0; blob50[7] = 0;
+        int16_t val50 = (int16_t)(-20 * 256);
+        memcpy(blob50 + 8 + 56 * 2, &val50, 2);
+
+        float bins50[100];
+        ASSERT_INT_EQ("parse_meters4_blob: n_vals=50 (X32) returns 0",
+            parse_meters4_blob(blob50, sizeof(blob50), bins50), 0);
+        ASSERT_FLOAT_EQ("parse_meters4_blob: n_vals=50 bin 56 = -20.0 dBFS",
+            bins50[56], -20.0f);
     }
 
     /* ── detect_peak ─────────────────────────────────────────────────────── */
