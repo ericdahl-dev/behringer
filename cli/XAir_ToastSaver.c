@@ -19,11 +19,13 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include "toast_logic.h"
 #include "ringout_logic.h"
+#include "ringout_profile.h"
 #include "mic_cal.h"
 #include "rta_bins.h"
 
@@ -55,6 +57,7 @@ typedef struct {
     float  cut_val;       /* float sent to TEQ (0.5 = flat) */
     double notched_at;    /* gettimeofday seconds */
     int    release_hold;  /* consecutive frames below release threshold */
+    int    from_profile;  /* loaded via --load-profile: pinned, never auto-released */
 } NotchState;
 
 typedef struct {
@@ -99,6 +102,8 @@ typedef struct {
     int    ro_orig_captured; /* 1 once ro_orig_fader is valid */
     int    ro_supervised;    /* --ringout-supervised: pause for operator each raise */
     float  ro_cur_gain_db;   /* gain currently commanded on the bus */
+    char   ro_save_profile[256]; /* --save-profile PATH (ring-out) */
+    char   ro_load_profile[256]; /* --load-profile PATH (reactive) */
 } AppState;
 
 /* ── globals ─────────────────────────────────────────────────────────────── */
@@ -320,6 +325,7 @@ static void run_detection(AppState *s) {
     /* release pass: check all active notches */
     for (int j = 0; j < 31; j++) {
         if (!s->notches[j].active) continue;
+        if (s->notches[j].from_profile) continue;  /* pinned static notch — never auto-release */
         int bin = TOAST_GEQ_BIN[j];
         if (s->bins[bin] < s->baseline[bin] + release_thr) {
             s->notches[j].release_hold++;
@@ -441,6 +447,74 @@ static void handle_meters4(const uint8_t *blob, int blen, AppState *s) {
 
     run_detection(s);
     if (!s->verbose) draw_display(s);
+}
+
+/* ── ring-out profile save / load (T-024) ────────────────────────────────── */
+
+/* Write the completed ring-out result (notches + margin + target) to a file. */
+static void ringout_save_profile(AppState *s, float margin_db) {
+    RingoutProfile p;
+    memset(&p, 0, sizeof(p));
+    strncpy(p.model, "XR18", sizeof(p.model) - 1);
+    p.bus = s->ro_bus;
+    p.fx_slot = s->fx_slot;
+    p.margin_db = margin_db;
+    time_t tnow = time(NULL);
+    strftime(p.created, sizeof(p.created), "%Y-%m-%dT%H:%M:%S", localtime(&tnow));
+    int count = 0;
+    for (int j = 0; j < 31; j++)
+        if (s->notches[j].active) { p.band_db[j] = s->cut_dB; count++; }
+
+    char buf[2048];
+    int n = ringout_profile_serialize(&p, buf, sizeof(buf));
+    if (n < 0) { fprintf(stderr, "[ring-out] profile serialize failed\n"); return; }
+    FILE *f = fopen(s->ro_save_profile, "w");
+    if (!f) { fprintf(stderr, "[ring-out] cannot write %s\n", s->ro_save_profile); return; }
+    fwrite(buf, 1, n, f);
+    fclose(f);
+    printf("[ring-out] saved profile to %s (%d notch%s, margin %.1fdB)\n",
+           s->ro_save_profile, count, count == 1 ? "" : "es", margin_db);
+}
+
+/* Load a profile and pre-place its static notches for reactive protection.
+ * Returns 0 on success, -1 on read/parse/mismatch error. */
+static int ringout_load_profile(AppState *s) {
+    FILE *f = fopen(s->ro_load_profile, "r");
+    if (!f) { fprintf(stderr, "error: cannot read profile %s\n", s->ro_load_profile); return -1; }
+    char buf[4096];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    if (n == 0) { fprintf(stderr, "error: empty profile %s\n", s->ro_load_profile); return -1; }
+    buf[n] = 0;
+
+    RingoutProfile p;
+    if (ringout_profile_parse(buf, &p) != 0) {
+        fprintf(stderr, "error: malformed profile %s\n", s->ro_load_profile); return -1;
+    }
+    /* mismatch guard: notch bands target a TEQ in a specific model + FX slot. */
+    if (strcmp(p.model, "XR18") != 0) {
+        fprintf(stderr, "error: profile model '%s' != XR18\n", p.model); return -1;
+    }
+    if (p.fx_slot != s->fx_slot) {
+        fprintf(stderr, "error: profile fx_slot %d != -s %d\n", p.fx_slot, s->fx_slot); return -1;
+    }
+
+    int applied = 0;
+    for (int j = 0; j < 31; j++) {
+        if (p.band_db[j] < 0.0f) {
+            float v = db_to_geq_float(p.band_db[j]);
+            send_teq_band(s, j + 1, v);
+            s->notches[j].active       = 1;
+            s->notches[j].cut_val      = v;
+            s->notches[j].from_profile = 1;
+            s->notches[j].notched_at   = now_sec();
+            applied++;
+        }
+    }
+    fprintf(stderr, "[load] applied %d pinned profile notch%s from %s "
+            "(made for bus %d, margin %.1fdB)\n",
+            applied, applied == 1 ? "" : "es", s->ro_load_profile, p.bus, p.margin_db);
+    return 0;
 }
 
 /* ── ring-out flow (T-023: supervised ramp/detect/notch control loop) ─────── */
@@ -616,6 +690,7 @@ static void run_ringout(AppState *s) {
 
     ringout_panic(s);                 /* always return the fader to the operator's level */
     if (completed) {
+        if (s->ro_save_profile[0]) ringout_save_profile(s, st.margin_db);
         printf("[ring-out] notches LEFT in place (the ring-out result).\n");
     } else {
         cleanup_notches(s);           /* incomplete run → revert to as-found */
@@ -662,7 +737,8 @@ int main(int argc, char **argv) {
     s.ro_max_notches = 8;
 
     enum { OPT_RINGOUT = 1000, OPT_RO_BUS, OPT_RO_CEIL,
-           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_RO_SUP, OPT_MIC_CAL };
+           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_RO_SUP,
+           OPT_MIC_CAL, OPT_SAVE_PROFILE, OPT_LOAD_PROFILE };
     static struct option long_opts[] = {
         {"mic-cal",            required_argument, 0, OPT_MIC_CAL},
         {"ringout",            no_argument,       0, OPT_RINGOUT},
@@ -672,6 +748,8 @@ int main(int argc, char **argv) {
         {"ringout-margin",     required_argument, 0, OPT_RO_MARGIN},
         {"ringout-max-notches",required_argument, 0, OPT_RO_MAXN},
         {"ringout-supervised", no_argument,       0, OPT_RO_SUP},
+        {"save-profile",       required_argument, 0, OPT_SAVE_PROFILE},
+        {"load-profile",       required_argument, 0, OPT_LOAD_PROFILE},
         {0, 0, 0, 0}
     };
 
@@ -693,6 +771,8 @@ int main(int argc, char **argv) {
         case OPT_RO_MARGIN: s.ro_margin_db   = atof(optarg); break;
         case OPT_RO_MAXN:   s.ro_max_notches = atoi(optarg); break;
         case OPT_RO_SUP:    s.ro_supervised  = 1;            break;
+        case OPT_SAVE_PROFILE: strncpy(s.ro_save_profile, optarg, sizeof(s.ro_save_profile)-1); break;
+        case OPT_LOAD_PROFILE: strncpy(s.ro_load_profile, optarg, sizeof(s.ro_load_profile)-1); break;
         default:
         case 'h':
             fprintf(stderr,
@@ -716,7 +796,9 @@ int main(int argc, char **argv) {
                 "  --ringout-step dB      ramp/back-off increment (default: 1)\n"
                 "  --ringout-margin dB    stop once this much headroom is gained (default: 6)\n"
                 "  --ringout-max-notches N stop after N notches (default: 8)\n"
-                "  --ringout-supervised   pause for Enter before each gain raise\n");
+                "  --ringout-supervised   pause for Enter before each gain raise\n"
+                "  --save-profile PATH    (ring-out) write the result profile to PATH\n"
+                "  --load-profile PATH    (reactive) pre-place a saved profile's notches\n");
             return opt == 'h' ? 0 : 1;
         }
     }
@@ -744,6 +826,10 @@ int main(int argc, char **argv) {
         if (s.ro_max_notches < 1) {
             fprintf(stderr, "error: --ringout-max-notches must be >= 1\n"); return 1;
         }
+        if (s.ro_load_profile[0])
+            fprintf(stderr, "warning: --load-profile is ignored in ring-out mode\n");
+    } else if (s.ro_save_profile[0]) {
+        fprintf(stderr, "warning: --save-profile only applies to --ringout mode\n");
     }
 
     signal(SIGINT,  sig_handler);
@@ -798,6 +884,12 @@ int main(int argc, char **argv) {
     osc_int_float(&s, "/-prefs/rta", 0, 0.25f);  /* PEAK mode, decay 0.25 */
     subscribe_meters4(&s);
     osc_no_args(&s, "/xremote");
+
+    /* ── reactive handoff: pre-place a saved ring-out profile's notches ── */
+    if (s.ro_load_profile[0] && ringout_load_profile(&s) != 0) {
+        close(s.fd);
+        return 1;
+    }
 
     if (!s.verbose) print_static_display(&s);
 
