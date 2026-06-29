@@ -36,10 +36,14 @@ test_x32tap: | dirs
 test_ringout_logic: | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c ringout_logic.c toast_logic.c -lm
 
-check: test_toast_logic test_x32tap test_ringout_logic
+test_rta_bins: | dirs
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c rta_bins.c toast_logic.c -lm
+
+check: test_toast_logic test_x32tap test_ringout_logic test_rta_bins
 	$(BUILD)/test_toast_logic
 	$(BUILD)/test_x32tap
 	$(BUILD)/test_ringout_logic
+	$(BUILD)/test_rta_bins
 
 clean:
 	$(RM) $(BUILD)
