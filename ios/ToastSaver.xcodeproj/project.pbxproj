@@ -17,6 +17,7 @@
 		AA000000000000000000008A /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000000000000000003002A /* Accelerate.framework */; };
 		AA000000000000000000009A /* ToastSaverCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA000000000000000004002A /* ToastSaverCore */; };
 		AA00000000000000000000BA /* NotchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001008A /* NotchController.swift */; };
+		AA00000000000000000000CA /* MixerConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001009A /* MixerConnection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		AA000000000000000001006A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000000000000000001007A /* ToastSaver.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ToastSaver.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000001008A /* NotchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchController.swift; sourceTree = "<group>"; };
+		AA000000000000000001009A /* MixerConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerConnection.swift; sourceTree = "<group>"; };
 		AA000000000000000003001A /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
 		AA000000000000000003002A /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -64,6 +66,7 @@
 				AA000000000000000001004A /* FFTEngine.swift */,
 				AA000000000000000001005A /* XR18Connection.swift */,
 				AA000000000000000001008A /* NotchController.swift */,
+				AA000000000000000001009A /* MixerConnection.swift */,
 				AA000000000000000001006A /* Assets.xcassets */,
 			);
 			path = ToastSaver;
@@ -167,6 +170,7 @@
 				AA000000000000000000004A /* FFTEngine.swift in Sources */,
 				AA000000000000000000005A /* XR18Connection.swift in Sources */,
 				AA00000000000000000000BA /* NotchController.swift in Sources */,
+				AA00000000000000000000CA /* MixerConnection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
