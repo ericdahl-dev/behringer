@@ -3,6 +3,53 @@
 
 #include <stdint.h>
 
+/* ── toast_step: pure reactive detection loop ───────────────────────────── */
+
+typedef enum {
+    TOAST_HOLD,         /* nothing to do this frame */
+    TOAST_NOTCH,        /* place a new notch; send cut_val to geq_par */
+    TOAST_RELEASE_RAMP, /* ramp an active notch toward flat; send ramp_val */
+    TOAST_RELEASE_DONE  /* notch fully released; restore to flat (0.5) */
+} ToastOp;
+
+typedef struct {
+    ToastOp op;
+    int     geq_par;  /* 1-31; valid for NOTCH, RELEASE_RAMP, RELEASE_DONE */
+    float   cut_val;  /* TEQ float applied on TOAST_NOTCH */
+    float   ramp_val; /* TEQ float to send on TOAST_RELEASE_RAMP/DONE */
+} ToastAction;
+
+typedef struct {
+    /* per-band mutable state */
+    int   active[31];
+    float cut_val[31];
+    int   release_hold[31];
+    int   from_profile[31]; /* pinned — never auto-released */
+    int   confirm_hold[31];
+    /* config — set at init, read-only in step */
+    float threshold_dB;
+    float cut_dB;
+    int   release_frames;   /* release_sec * 20 */
+    int   confirm_frames;
+    float narrow_db;
+    int   narrow_skip;
+    int   narrow_span;
+} ToastState;
+
+void toast_state_init(ToastState *st,
+                      float threshold_dB, float cut_dB,
+                      float release_sec,  int   confirm_frames,
+                      float narrow_db,    int   narrow_skip,
+                      int   narrow_span);
+
+/* Process one RTA frame. Writes up to cap actions into out; returns count.
+ * One frame can produce up to 31 RELEASE_RAMP/DONE + at most 1 NOTCH.
+ * Caller must size out to at least 32. */
+int toast_step(ToastState *st,
+               const float *bins,
+               const float *baseline,
+               ToastAction *out, int cap);
+
 /* RTA bin index for each GEQ par (index 0 = par 01).
  * Calibrated: pistonphone 1 kHz @ 94 dB SPL → bin 56. */
 extern const int TOAST_GEQ_BIN[31];
