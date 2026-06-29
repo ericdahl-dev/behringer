@@ -13,7 +13,7 @@ tempo-sync side firmware and an emulator to test against.
 | [`esp32/`](esp32/) | On-board **tempo → FX-delay** bridge firmware (X32Link, X32MidiClock) + **X32 emulator** for testing without hardware. | Arduino/ESP32-S3 | `LNK-` / `MCK-` / `ESP-` | [AGENTS.md](esp32/AGENTS.md) |
 | [`ios/`](ios/) | **ToastSaver for iOS** — ToastSaverCore (Linux-testable detection logic) + FFT (Accelerate) + audio capture + XR18 OSC + SwiftUI. | Swift | `IOS-` | — |
 | [`src/`](src/) | Upstream [pmaillot/X32-Behringer](https://github.com/pmaillot/X32-Behringer) as a **read-only** submodule. `cli/` was forked from here; don't edit. | C (submodule) | — | — |
-| [`docs/`](docs/) | OSC protocol references: [protocol index/provenance](docs/x32-osc-protocol.md), [XAir cheat-sheet](docs/xr18-xair-osc-cheatsheet.md), [GEQ](docs/xr18-geq-osc.md), [meters/RTA](docs/xr18-meters-osc.md). | — | — | — |
+| [`docs/`](docs/) | OSC protocol references: [protocol index/provenance](docs/x32-osc-protocol.md), [XAir cheat-sheet](docs/xr18-xair-osc-cheatsheet.md), [GEQ](docs/xr18-geq-osc.md), [meters/RTA](docs/xr18-meters-osc.md). Plus the [ideas backlog](docs/ideas.md) — creative features beyond the upstream ports — and the [ring-out assistant design](docs/ringout-design.md). | — | — | — |
 
 The feedback destroyer is the recurring product across `cli/` (shipping),
 `ios/` (in progress), and a planned ESP32 build (`TSV-` tasks in
