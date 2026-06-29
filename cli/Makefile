@@ -16,7 +16,7 @@ X32lib:
 	@$(MAKE) -C $@ all
 
 XAir_ToastSaver: X32lib
-	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c ringout_logic.c $(LDFLAGS)
 
 XAir: X32lib
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c $(LDFLAGS)
