@@ -16,6 +16,10 @@ void osc_listener_begin(const char *mixer_ip, int port, osc_on_message_t cb);
  * /xremote inside the mixer's subscription window. */
 void osc_listener_poll(void);
 
+/* Send a raw OSC packet to the mixer from the listener's socket, so any reply
+ * comes back to this same socket (e.g. /ch/NN/config/name queries). */
+void osc_listener_send(const uint8_t *buf, int len);
+
 void osc_listener_end(void);
 
 #ifdef __cplusplus
