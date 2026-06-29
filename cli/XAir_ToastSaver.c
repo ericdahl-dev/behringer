@@ -91,6 +91,11 @@ typedef struct {
      * the narrow peak; resets to 0 for all pars when a different par leads */
     int confirm_hold[31];
 
+    /* doctor mode */
+    int    doctor;
+    int    doctor_fix;
+    int    no_preflight;   /* --no-preflight: skip the auto pre-flight check */
+
     /* ── ring-out (proactive) — T-022 plumbing, control loop in T-023 ──────── */
     int    ringout;          /* --ringout: proactive mode instead of reactive */
     int    ro_bus;           /* target monitor bus 1-6 */
@@ -193,6 +198,55 @@ static int osc_query_float(AppState *s, const char *path, float *out) {
     return 0;
 }
 
+static int osc_query_int(AppState *s, const char *path, int *out) {
+    char buf[BSIZE];
+    int  len = Xsprint(buf, 0, 's', (void *)path);
+    struct timeval tv = {1, 0};
+    fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
+
+    sendto(s->fd, buf, len, 0, s->xip_addr, s->xip_len);
+    if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) return -1;
+    int r = recvfrom(s->fd, buf, BSIZE - 1, 0, 0, 0);
+    if (r <= 0) return -1;
+    buf[r] = 0;
+    if (strcmp(buf, path) != 0) return -1;
+
+    int addr_padded = ((int)strlen(buf) + 1 + 3) & ~3;
+    int tag_padded  = ((int)strlen(buf + addr_padded) + 1 + 3) & ~3;
+    int off = addr_padded + tag_padded;
+    if (off + 4 > r) return -1;
+
+    uint32_t be; memcpy(&be, buf + off, 4);
+    *out = (int)ntohl(be);
+    return 0;
+}
+
+/* Query a node ("/node ,s <name>") and copy the reply string (e.g. "TEQ ON")
+ * into out. Returns 0 on success, -1 on timeout / malformed reply. */
+static int osc_query_node(AppState *s, const char *node, char *out, int outsz) {
+    char buf[BSIZE];
+    int  len = 0;
+    len = Xsprint(buf, len, 's', "/node");
+    len = Xsprint(buf, len, 's', ",s");
+    len = Xsprint(buf, len, 's', (void *)node);
+    struct timeval tv = {1, 0};
+    fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
+
+    sendto(s->fd, buf, len, 0, s->xip_addr, s->xip_len);
+    if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) return -1;
+    int r = recvfrom(s->fd, buf, BSIZE - 1, 0, 0, 0);
+    if (r <= 0) return -1;
+    buf[r] = 0;
+    if (strncmp(buf, "node", 4) != 0) return -1;   /* X32 /node replies sans leading slash */
+    int addr_padded = ((int)strlen(buf) + 1 + 3) & ~3;
+    int tag_padded  = ((int)strlen(buf + addr_padded) + 1 + 3) & ~3;
+    int off = addr_padded + tag_padded;
+    if (off >= r) return -1;
+    strncpy(out, buf + off, outsz - 1);
+    out[outsz - 1] = 0;
+    return 0;
+}
+
 /* Command the target monitor bus to a gain in dB, clamped to the ceiling.
  * The ceiling is also enforced upstream by the controller (T-021); this is the
  * belt-and-suspenders guard at the wire. */
@@ -226,6 +280,139 @@ static void subscribe_meters4(AppState *s) {
     len = Xsprint(buf, len, 'i', &zero);
     len = Xsprint(buf, len, 'i', &zero);
     osc_send_raw(s, buf, len);
+}
+
+/* ── doctor mode ─────────────────────────────────────────────────────────── */
+
+static const char *EQ_MODE_NAME[] = {"PEQ", "GEQ", "TEQ"};
+
+static int run_doctor(AppState *s, int fix) {
+    char buf[BSIZE];
+    int  len = Xsprint(buf, 0, 's', "/xinfo");
+    struct timeval tv = {1, 0};
+    fd_set fds;
+    FD_ZERO(&fds); FD_SET(s->fd, &fds);
+
+    printf("XAir Doctor — %s\n", s->ip);
+    for (int i = 0; i < 40; i++) fputs("\xe2\x94\x80", stdout);
+    printf("\n");
+
+    sendto(s->fd, buf, len, 0, s->xip_addr, s->xip_len);
+    if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0 ||
+        recvfrom(s->fd, buf, BSIZE, 0, 0, 0) < 0 ||
+        strcmp(buf, "/xinfo") != 0) {
+        printf("[FAIL] XR18 not reachable at %s\n", s->ip);
+        return 1;
+    }
+    printf("[PASS] XR18 reachable\n");
+    printf("       RTA source ch %d  |  reactive FX slot %d\n", s->channel, s->fx_slot);
+
+    int issues = 0;
+
+    /* buses 1–6 */
+    for (int n = 1; n <= 6; n++) {
+        char path[32];
+        snprintf(path, sizeof(path), "/bus/%d/eq/mode", n);
+        int mode = -1;
+        if (osc_query_int(s, path, &mode) != 0) {
+            printf("[FAIL] Bus %d: no reply\n", n);
+            issues++;
+            continue;
+        }
+        const char *name = (mode >= 0 && mode <= 2) ? EQ_MODE_NAME[mode] : "?";
+        if (mode == 1 || mode == 2) {
+            printf("[PASS] Bus %d: %s\n", n, name);
+        } else {
+            printf("[FAIL] Bus %d: %s  <- needs GEQ or TEQ\n", n, name);
+            issues++;
+            if (fix) {
+                osc_int(s, path, 2);
+                printf("       -> set to TEQ\n");
+            }
+        }
+    }
+
+    /* LR */
+    {
+        int mode = -1;
+        if (osc_query_int(s, "/lr/eq/mode", &mode) != 0) {
+            printf("[FAIL] LR: no reply\n");
+            issues++;
+        } else {
+            const char *name = (mode >= 0 && mode <= 2) ? EQ_MODE_NAME[mode] : "?";
+            if (mode == 1 || mode == 2) {
+                printf("[PASS] LR: %s\n", name);
+            } else {
+                printf("[FAIL] LR: %s  <- needs GEQ or TEQ\n", name);
+                issues++;
+                if (fix) {
+                    osc_int(s, "/lr/eq/mode", 2);
+                    printf("       -> set to TEQ\n");
+                }
+            }
+        }
+    }
+
+    /* reactive mode notch target: the FX slot must hold a GEQ/TEQ */
+    {
+        char node[160], q[24];
+        snprintf(q, sizeof q, "fx/%d", s->fx_slot);
+        if (osc_query_node(s, q, node, sizeof node) != 0) {
+            printf("[WARN] FX slot %d: no reply\n", s->fx_slot);
+        } else if (strstr(node, "TEQ") || strstr(node, "GEQ")) {
+            printf("[PASS] FX slot %d: %.40s\n", s->fx_slot, node);
+        } else {
+            printf("[FAIL] FX slot %d: %.40s  <- load a GEQ/TEQ for reactive notches\n",
+                   s->fx_slot, node);
+            issues++;
+        }
+    }
+
+    /* RTA input is actually streaming (and carrying signal) */
+    {
+        subscribe_meters4(s);
+        int   frames = 0;
+        float peak   = -200.0f;
+        for (int t = 0; t < 10; t++) {
+            struct timeval tv2 = {0, 200000};
+            fd_set f; FD_ZERO(&f); FD_SET(s->fd, &f);
+            if (select(s->fd + 1, &f, NULL, NULL, &tv2) <= 0) continue;
+            int r = recvfrom(s->fd, buf, BSIZE, 0, 0, 0);
+            if (r > 0 && strcmp(buf, "/meters/4") == 0) {
+                int ap = ((int)strlen(buf) + 1 + 3) & ~3;
+                int tp = ((int)strlen(buf + ap) + 1 + 3) & ~3;
+                int bs = ap + tp;
+                if (bs < r && parse_meters4_blob((uint8_t *)buf + bs, r - bs, s->bins) == 0) {
+                    frames++;
+                    for (int i = 0; i < 100; i++) if (s->bins[i] > peak) peak = s->bins[i];
+                }
+            }
+        }
+        if (frames > 0)
+            printf("[PASS] RTA /meters/4 streaming (%d frames, peak %.0f dBFS)\n", frames, peak);
+        else {
+            printf("[FAIL] RTA /meters/4: no frames — check the RTA source channel/tap\n");
+            issues++;
+        }
+    }
+
+    /* mic-cal status (client side) */
+    {
+        int loaded = 0;
+        for (int i = 0; i < 100; i++) if (s->mic_corr[i] != 0.0f) { loaded = 1; break; }
+        printf("[INFO] mic-cal: %s\n", loaded ? "loaded" : "not configured (--mic-cal)");
+    }
+
+    printf("\n");
+    if (issues == 0) {
+        printf("All outputs OK.\n");
+    } else if (fix) {
+        printf("%d output%s set to TEQ.\n", issues, issues == 1 ? "" : "s");
+    } else {
+        printf("%d issue%s found. Run with --fix to set failing outputs to TEQ.\n",
+               issues, issues == 1 ? "" : "s");
+    }
+    return issues;
 }
 
 /* ── ANSI display ────────────────────────────────────────────────────────── */
@@ -738,7 +925,8 @@ int main(int argc, char **argv) {
 
     enum { OPT_RINGOUT = 1000, OPT_RO_BUS, OPT_RO_CEIL,
            OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_RO_SUP,
-           OPT_MIC_CAL, OPT_SAVE_PROFILE, OPT_LOAD_PROFILE };
+           OPT_MIC_CAL, OPT_SAVE_PROFILE, OPT_LOAD_PROFILE,
+           OPT_DOCTOR, OPT_FIX, OPT_NO_PREFLIGHT };
     static struct option long_opts[] = {
         {"mic-cal",            required_argument, 0, OPT_MIC_CAL},
         {"ringout",            no_argument,       0, OPT_RINGOUT},
@@ -750,6 +938,9 @@ int main(int argc, char **argv) {
         {"ringout-supervised", no_argument,       0, OPT_RO_SUP},
         {"save-profile",       required_argument, 0, OPT_SAVE_PROFILE},
         {"load-profile",       required_argument, 0, OPT_LOAD_PROFILE},
+        {"doctor",             no_argument,       0, OPT_DOCTOR},
+        {"fix",                no_argument,       0, OPT_FIX},
+        {"no-preflight",       no_argument,       0, OPT_NO_PREFLIGHT},
         {0, 0, 0, 0}
     };
 
@@ -773,6 +964,9 @@ int main(int argc, char **argv) {
         case OPT_RO_SUP:    s.ro_supervised  = 1;            break;
         case OPT_SAVE_PROFILE: strncpy(s.ro_save_profile, optarg, sizeof(s.ro_save_profile)-1); break;
         case OPT_LOAD_PROFILE: strncpy(s.ro_load_profile, optarg, sizeof(s.ro_load_profile)-1); break;
+        case OPT_DOCTOR: s.doctor     = 1; break;
+        case OPT_FIX:    s.doctor_fix = 1; break;
+        case OPT_NO_PREFLIGHT: s.no_preflight = 1; break;
         default:
         case 'h':
             fprintf(stderr,
@@ -782,6 +976,7 @@ int main(int argc, char **argv) {
                 "       XAir_ToastSaver -i <ip> --ringout [--ringout-bus N]\n"
                 "                       [--ringout-ceiling dB] [--ringout-step dB]\n"
                 "                       [--ringout-margin dB] [--ringout-max-notches N]\n"
+                "       XAir_ToastSaver -i <ip> --doctor [--fix]\n"
                 "  -i  XR18 IP address (required)\n"
                 "  -c  RTA source channel 1-18 (default: 1)\n"
                 "  -s  FX slot with TEQ, 1-4 (default: 4)\n"
@@ -798,7 +993,10 @@ int main(int argc, char **argv) {
                 "  --ringout-max-notches N stop after N notches (default: 8)\n"
                 "  --ringout-supervised   pause for Enter before each gain raise\n"
                 "  --save-profile PATH    (ring-out) write the result profile to PATH\n"
-                "  --load-profile PATH    (reactive) pre-place a saved profile's notches\n");
+                "  --load-profile PATH    (reactive) pre-place a saved profile's notches\n"
+                "  --doctor               check all bus/LR outputs have GEQ or TEQ mode set\n"
+                "  --fix                  (with --doctor) set failing outputs to TEQ\n"
+                "  --no-preflight         skip the auto pre-flight readiness check\n");
             return opt == 'h' ? 0 : 1;
         }
     }
@@ -847,6 +1045,13 @@ int main(int argc, char **argv) {
     s.xip_addr            = (struct sockaddr *)&s.xip;
     s.xip_len             = sizeof(s.xip);
 
+    /* ── doctor mode ── */
+    if (s.doctor) {
+        run_doctor(&s, s.doctor_fix);
+        close(s.fd);
+        return 0;
+    }
+
     if (!s.verbose)
         printf("XAir Toast Saver  connecting to %s  ch:%d  slot:%d  "
                "threshold:%.0fdB  cut:%.0fdB  release:%.0fs\n",
@@ -869,6 +1074,18 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (s.verbose) printf("connected to %s\n", s.ip);
+    }
+
+    /* ── auto pre-flight: never run against an output we can't notch ── */
+    if (!s.no_preflight) {
+        int n = run_doctor(&s, s.doctor_fix);
+        if (n > 0 && !s.doctor_fix) {
+            fprintf(stderr, "\n*** pre-flight found %d issue(s) above. Set the outputs up, "
+                            "re-run with --fix, or --no-preflight to override. ***\n", n);
+            close(s.fd);
+            return 1;
+        }
+        printf("\n");
     }
 
     /* ── ring-out (proactive) takes its own flow ── */
