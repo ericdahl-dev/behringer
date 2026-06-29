@@ -58,3 +58,7 @@ clean:
 	$(MAKE) -C X32lib clean
 
 .PHONY: $(DIRS) check clean dirs
+
+# Ring-out safety harness (T-025): mock X32 + synthetic feedback (integration)
+test-ringout-emu: XAir_ToastSaver
+	python3 test_ringout_emu.py $(BUILD)/XAir_ToastSaver
