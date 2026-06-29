@@ -15,6 +15,8 @@ typedef struct {
     int  model;         // MODEL_XR18 or MODEL_X32
     int  fx_slot;       // 1–4 (XR18) or 1–8 (X32)
     int  input_source;  // 0 = Ableton Link, 1 = USB MIDI clock
+    int  fdr_enable;    // X32FaderDisp: 0 = off, 1 = write dB to scribble names
+    int  fdr_chan_count;// X32FaderDisp: 16 (XR18) or 32 (X32)
 } AppConfig;
 
 void config_defaults(AppConfig* cfg);
