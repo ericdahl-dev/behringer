@@ -38,7 +38,8 @@ const uint8_t *osc_locate_blob(const char *buf, int buflen, int *blob_len);
  * into out[0..outsz-1]. Returns 0 on success, -1 on timeout/malformed reply. */
 int osc_query_node(OscConn *c, const char *node, char *out, int outsz);
 
-/* Subscribe to /meters/4 (RTA) pushes from the mixer. */
-void osc_subscribe_meters4(OscConn *c);
+/* Subscribe to meter pushes from the mixer. meter_path: "/meters/4" (XR18) or "/meters/15" (X32). */
+void osc_subscribe_meters(OscConn *c, const char *meter_path);
+void osc_subscribe_meters4(OscConn *c); /* thin wrapper: osc_subscribe_meters(c, "/meters/4") */
 
 #endif /* OSC_IO_H */

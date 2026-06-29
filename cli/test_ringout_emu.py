@@ -12,7 +12,9 @@ Run:
 """
 import argparse, json, socket, struct, subprocess, sys, time, signal, os, pathlib
 
-PORT       = 10024
+PORT_XR18  = 10024
+PORT_X32   = 10023
+PORT       = PORT_XR18   # default; overridden per-run when --model x32
 BUS        = 1
 CEILING    = 0.0
 FX_SLOT    = 4
@@ -52,10 +54,13 @@ def fader_to_db(f):
     if f >  0:      return 480*f - 90
     return -90.0
 
-def meters4_frame(bins):
-    body = struct.pack(">I", 4 + len(bins)*2) + struct.pack("<I", len(bins))
+def meters_frame(bins, meter_path, n_vals):
+    body = struct.pack(">I", 4 + len(bins)*2) + struct.pack("<I", n_vals)
     body += b"".join(struct.pack("<h", max(-32768, min(32767, int(v*256)))) for v in bins)
-    return pad(b"/meters/4\x00") + pad(b",b\x00") + body
+    return pad(meter_path.encode() + b"\x00") + pad(b",b\x00") + body
+
+def meters4_frame(bins):
+    return meters_frame(bins, "/meters/4", len(bins))
 
 # GEQ par → bin mapping (mirrors TOAST_GEQ_BIN in toast_logic.h)
 _GEQ_BIN = [
@@ -190,19 +195,26 @@ def handle(addr, args, sock, who, st):
 
 # ── run one scenario ──────────────────────────────────────────────────────────
 
-def run(ceiling, abort_after_s, bin_path, room: RoomModel, debug_bins: bool):
+def run(ceiling, abort_after_s, bin_path, room: RoomModel, debug_bins: bool,
+        model: str = "xr18"):
     import select
+    port       = PORT_X32 if model == "x32" else PORT_XR18
+    meter_path = "/meters/15" if model == "x32" else "/meters/4"
+    n_vals     = 50 if model == "x32" else 100
+
     st = make_state()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", PORT))
+    sock.bind(("127.0.0.1", port))
     sock.setblocking(False)
 
+    extra_args = ["--model", "x32"] if model == "x32" else []
     proc = subprocess.Popen(
         [bin_path, "-i", "127.0.0.1", "--ringout", "--no-preflight",
          "--ringout-bus", str(BUS), "--ringout-ceiling", str(int(ceiling)),
          "--ringout-step", "2", "--ringout-margin", "6",
-         "--ringout-max-notches", "8", "-s", str(FX_SLOT), "-c", "1", "-t", "18"],
+         "--ringout-max-notches", "8", "-s", str(FX_SLOT), "-c", "1", "-t", "18"]
+        + extra_args,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     last_meter = 0.0; t0 = time.time(); aborted = False; frame = 0
@@ -220,7 +232,7 @@ def run(ceiling, abort_after_s, bin_path, room: RoomModel, debug_bins: bool):
         now = time.time()
         if now - last_meter >= 0.04 and st["client"] and st["streaming"]:
             bins = room.step(st["gain_db"], st["notched_pars"])
-            sock.sendto(meters4_frame(bins), st["client"])
+            sock.sendto(meters_frame(bins, meter_path, n_vals), st["client"])
             last_meter = now
             if debug_bins:
                 parts = " ".join(
@@ -249,6 +261,8 @@ def main():
     parser = argparse.ArgumentParser(description="Ring-out emulator / harness")
     parser.add_argument("bin", nargs="?", default="build/XAir_ToastSaver",
                         help="path to XAir_ToastSaver binary")
+    parser.add_argument("--model", default="xr18", choices=["xr18", "x32"],
+                        help="mixer model (default: xr18)")
     parser.add_argument("--room", default="flat",
                         choices=list(PRESETS), metavar="NAME",
                         help="room preset: flat (default), bathroom, lecture, gymnasium")
@@ -267,11 +281,12 @@ def main():
         if ok: P += 1
         else:  F += 1
 
-    print(f"room: {args.room_file or args.room}")
+    print(f"model: {args.model}  room: {args.room_file or args.room}")
     print()
     print("══ scenario 1: closed-loop ring-out to completion ══")
     out, r = run(ceiling=0.0, abort_after_s=None,
-                 bin_path=args.bin, room=room, debug_bins=args.debug_bins)
+                 bin_path=args.bin, room=room, debug_bins=args.debug_bins,
+                 model=args.model)
     for ln in out.splitlines():
         if "ring-out" in ln: print("  " + ln)
     check("gain never exceeded ceiling (0 dB)", r["max_gain"] <= 0.05)
@@ -281,7 +296,8 @@ def main():
 
     print("\n══ scenario 2: Ctrl-C mid-ramp ══")
     out, r = run(ceiling=10.0, abort_after_s=2.0,
-                 bin_path=args.bin, room=room, debug_bins=args.debug_bins)
+                 bin_path=args.bin, room=room, debug_bins=args.debug_bins,
+                 model=args.model)
     for ln in out.splitlines():
         if "raise" in ln or "restored" in ln or "stopped" in ln: print("  " + ln)
     check("SIGINT restored fader to original",
