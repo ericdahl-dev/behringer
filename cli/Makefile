@@ -27,7 +27,7 @@ XR18: X32lib
 X32Tap: X32lib
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c x32tap_logic.c $(LDFLAGS) -lncursesw
 
-test_osc_io: | dirs
+test_osc_io: X32lib | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c osc_io.c $(LDFLAGS)
 
 test_toast_logic: | dirs
