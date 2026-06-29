@@ -120,10 +120,18 @@ noise. Restaurants, bars, gyms, retail. Real product category.
 Timestamped SPL logging to SD/cloud for venue noise-ordinance limits — a
 dedicated, tamper-evident noise box. Venues pay for this.
 
-### E3. Proactive ring-out assistant
+### E3. Proactive ring-out assistant  ⏳ in progress
 ToastSaver is reactive; add a **soundcheck mode** that sweeps monitor gain, finds
 feedback frequencies *before* the show, and pre-notches them. Same FFT/notch DSP,
-used preventively.
+used preventively. **Being built now** — design in
+[`ringout-design.md`](ringout-design.md), CLI tasks `T-021..T-025`.
+
+### E3b. Automated system tune (pink noise)  🔭 vision
+The bigger arc E3 leads to: play **pink noise** from the console's internal
+generator, measure the RTA, and **EQ the mains (and monitors) flat to a target
+curve** — then ring out the monitors. A true automated PA tune from one
+measurement mic. Magnitude-only (no phase/time-alignment). Full design in
+[`system-tune-design.md`](system-tune-design.md); scoped after `T-025`.
 
 ### E4. Smarter auto-mixer
 A gain-sharing automixer for panels/conferences/worship using the mixer's own

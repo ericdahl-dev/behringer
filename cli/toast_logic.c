@@ -68,3 +68,21 @@ int is_narrow_peak(const float *bins, int n_bins, int peak_bin,
     if (lcnt < 1 || rcnt < 1) return 0;  /* need neighbors on both sides */
     return (bins[peak_bin] - sum / (float)(lcnt + rcnt)) >= min_db;
 }
+
+float fader_db_to_float(float dB) {
+    if (dB >= 10.0f)  return 1.0f;
+    if (dB >= -10.0f) return (dB + 30.0f) / 40.0f;
+    if (dB >= -30.0f) return (dB + 50.0f) / 80.0f;
+    if (dB >= -60.0f) return (dB + 70.0f) / 160.0f;
+    if (dB >= -90.0f) return (dB + 90.0f) / 480.0f;
+    return 0.0f;
+}
+
+float fader_float_to_db(float f) {
+    if (f >= 1.0f)    return 10.0f;
+    if (f >= 0.5f)    return 40.0f  * f - 30.0f;
+    if (f >= 0.25f)   return 80.0f  * f - 50.0f;
+    if (f >= 0.0625f) return 160.0f * f - 70.0f;
+    if (f >= 0.0f)    return 480.0f * f - 90.0f;
+    return -90.0f;
+}
