@@ -50,6 +50,12 @@ void osc_listener_poll(void) {
     }
 }
 
+void osc_listener_send(const uint8_t *buf, int len) {
+    s_udp.beginPacket(s_mixer, s_port);
+    s_udp.write(buf, len);
+    s_udp.endPacket();
+}
+
 void osc_listener_end(void) {
     s_udp.stop();
 }
