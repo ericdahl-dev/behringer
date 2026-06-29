@@ -119,8 +119,8 @@ int parse_meters4_blob(const uint8_t *blob, int blen, float *bins) {
     if (blen < 8) return -1;
     uint32_t n_vals = (uint32_t)blob[4]        | ((uint32_t)blob[5] << 8) |
                       ((uint32_t)blob[6] << 16) | ((uint32_t)blob[7] << 24);
-    if (n_vals != 100) return -1;
-    if (blen < 8 + (int)(n_vals * 2)) return -1;
+    if (n_vals != 100 && n_vals != 50) return -1;
+    if (blen < 8 + 200) return -1;
     for (int i = 0; i < 100; i++) {
         int16_t raw;
         memcpy(&raw, blob + 8 + i * 2, 2);
