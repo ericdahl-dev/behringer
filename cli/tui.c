@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <unistd.h>
 
 /* Color pair IDs */
 #define CP_DIM    1
@@ -54,6 +55,7 @@ int tui_excess_level(float excess, float threshold) {
 
 void tui_init(void) {
     if (g_tui_on) return;
+    if (!isatty(STDOUT_FILENO)) return;  /* piped/redirected — stay plain text */
     setlocale(LC_ALL, "");
     initscr();
     start_color();
