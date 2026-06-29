@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -82,6 +83,17 @@ typedef struct {
     /* feedback confirmation counters — consecutive frames this par has been
      * the narrow peak; resets to 0 for all pars when a different par leads */
     int confirm_hold[31];
+
+    /* ── ring-out (proactive) — T-022 plumbing, control loop in T-023 ──────── */
+    int    ringout;          /* --ringout: proactive mode instead of reactive */
+    int    ro_bus;           /* target monitor bus 1-6 */
+    float  ro_ceiling_db;    /* hard gain ceiling (dB) */
+    float  ro_step_db;       /* ramp increment / back-off (dB) */
+    float  ro_margin_db;     /* stop once gain-before-feedback margin reached */
+    int    ro_max_notches;   /* stop after this many notches */
+    float  ro_orig_fader;    /* captured original bus fader [0..1] — restore target */
+    int    ro_orig_captured; /* 1 once ro_orig_fader is valid */
+    float  ro_cur_gain_db;   /* gain currently commanded on the bus */
 } AppState;
 
 /* ── globals ─────────────────────────────────────────────────────────────── */
@@ -140,6 +152,57 @@ static void send_teq_band(AppState *s, int par, float val) {
     char path[32];
     snprintf(path, sizeof(path), "/fx/%d/par/%02d", s->fx_slot, par);
     osc_float(s, path, val);
+}
+
+/* ── ring-out gain drive / safety (T-022) ────────────────────────────────── */
+
+/* Query a single float node (e.g. /bus/N/mix/fader) and read its reply.
+ * Returns 0 and sets *out on success, -1 on timeout / malformed reply.
+ * Call before subscribing to /meters so the reply isn't buried in meter blobs. */
+static int osc_query_float(AppState *s, const char *path, float *out) {
+    char buf[BSIZE];
+    int  len = Xsprint(buf, 0, 's', (void *)path);
+    struct timeval tv = {1, 0};
+    fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
+
+    sendto(s->fd, buf, len, 0, s->xip_addr, s->xip_len);
+    if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) return -1;
+    int r = recvfrom(s->fd, buf, BSIZE - 1, 0, 0, 0);
+    if (r <= 0) return -1;
+    buf[r] = 0;
+    if (strcmp(buf, path) != 0) return -1;
+
+    int addr_padded = ((int)strlen(buf) + 1 + 3) & ~3;
+    int tag_padded  = ((int)strlen(buf + addr_padded) + 1 + 3) & ~3;
+    int off = addr_padded + tag_padded;
+    if (off + 4 > r) return -1;
+
+    uint32_t be; memcpy(&be, buf + off, 4);
+    be = ntohl(be);                 /* OSC floats are big-endian */
+    memcpy(out, &be, 4);
+    return 0;
+}
+
+/* Command the target monitor bus to a gain in dB, clamped to the ceiling.
+ * The ceiling is also enforced upstream by the controller (T-021); this is the
+ * belt-and-suspenders guard at the wire. */
+static void ringout_set_gain(AppState *s, float dB) {
+    if (dB > s->ro_ceiling_db) dB = s->ro_ceiling_db;
+    char path[40];
+    snprintf(path, sizeof(path), "/bus/%d/mix/fader", s->ro_bus);
+    osc_float(s, path, fader_db_to_float(dB));
+    s->ro_cur_gain_db = dB;
+}
+
+/* Immediately restore the bus fader to its captured original value. Safe to
+ * call any time after capture; bound to the SIGINT/SIGTERM shutdown path. */
+static void ringout_panic(AppState *s) {
+    if (!s->ro_orig_captured) return;
+    char path[40];
+    snprintf(path, sizeof(path), "/bus/%d/mix/fader", s->ro_bus);
+    osc_float(s, path, s->ro_orig_fader);
+    fprintf(stderr, "[ring-out] restored bus %d fader to %.3f\n",
+            s->ro_bus, s->ro_orig_fader);
 }
 
 static void subscribe_meters4(AppState *s) {
@@ -374,6 +437,82 @@ static void handle_meters4(const uint8_t *blob, int blen, AppState *s) {
     if (!s->verbose) draw_display(s);
 }
 
+/* ── ring-out flow (T-022: setup + safe hold; control loop is T-023) ──────── */
+
+/* Capture the bus's current fader (so it can always be restored), insert the
+ * notch TEQ on that bus, assert a known start gain, then hold — keeping the RTA
+ * subscription alive — until the operator stops it. The ramp/detect/notch loop
+ * (driving ringout_step from ringout_logic) is added in T-023; this proves the
+ * gain-drive, insert, and panic-restore plumbing end to end. */
+static void run_ringout(AppState *s) {
+    char path[40];
+
+    /* 1) capture original fader BEFORE touching anything — refuse to drive a
+     *    bus we cannot restore. */
+    snprintf(path, sizeof(path), "/bus/%d/mix/fader", s->ro_bus);
+    if (osc_query_float(s, path, &s->ro_orig_fader) != 0) {
+        fprintf(stderr, "error: no reply reading %s — aborting ring-out "
+                "(refusing to drive a bus we can't restore)\n", path);
+        return;
+    }
+    s->ro_orig_captured = 1;
+    float start_db = fader_float_to_db(s->ro_orig_fader);
+
+    /* 2) insert the TEQ FX slot on the target monitor bus so notches act there */
+    snprintf(path, sizeof(path), "/bus/%d/insert/sel", s->ro_bus);
+    osc_int(s, path, s->fx_slot);          /* 0=OFF, 1..4 = Fx1..Fx4 */
+    snprintf(path, sizeof(path), "/bus/%d/insert/on", s->ro_bus);
+    osc_int(s, path, 1);
+
+    /* 3) RTA source + subscribe + keepalive */
+    osc_int(s, "/-stat/rta/source", s->channel);
+    osc_int_float(s, "/-prefs/rta", 0, 0.25f);
+    subscribe_meters4(s);
+    osc_no_args(s, "/xremote");
+
+    /* 4) assert the known start gain (clamped to ceiling) */
+    ringout_set_gain(s, start_db);
+
+    printf("[ring-out] bus %d  start %.1fdB (fader %.3f)  ceiling %.1fdB  "
+           "step %.1fdB  margin %.1fdB  max-notch %d  fx slot %d\n",
+           s->ro_bus, start_db, s->ro_orig_fader, s->ro_ceiling_db,
+           s->ro_step_db, s->ro_margin_db, s->ro_max_notches, s->fx_slot);
+    printf("[ring-out] RTA source = ch %d — ensure it taps the bus %d monitor "
+           "mic before ramping.\n", s->channel, s->ro_bus);
+    if (start_db > s->ro_ceiling_db)
+        printf("[ring-out] WARNING: start gain %.1fdB exceeds ceiling %.1fdB; "
+               "clamped down.\n", start_db, s->ro_ceiling_db);
+    printf("[ring-out] plumbing ready; ramp/detect/notch control loop lands in "
+           "T-023.\n");
+    printf("[ring-out] holding — Ctrl-C to restore the bus fader and exit.\n");
+
+    /* hold loop: keep RTA/keepalive alive; do NOT drive gain yet (T-023). */
+    double last_xremote = now_sec();
+    char r_buf[BSIZE];
+    while (g_running) {
+        double t = now_sec();
+        if (t - last_xremote >= XREMOTE_TIMEOUT) {
+            osc_no_args(s, "/xremote");
+            subscribe_meters4(s);
+            last_xremote = t;
+        }
+        struct timeval tv = {0, 60000};
+        fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
+        if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) continue;
+
+        int r_len = recvfrom(s->fd, r_buf, BSIZE - 1, 0, 0, 0);
+        if (r_len <= 0) continue;
+        if (strcmp(r_buf, "/meters/4") != 0) continue;
+        int addr_padded = ((int)strlen(r_buf) + 1 + 3) & ~3;
+        int tag_padded  = ((int)strlen(r_buf + addr_padded) + 1 + 3) & ~3;
+        int blob_start  = addr_padded + tag_padded;
+        if (blob_start >= r_len) continue;
+        parse_meters4_blob((uint8_t *)r_buf + blob_start, r_len - blob_start, s->bins);
+    }
+
+    ringout_panic(s);
+}
+
 /* ── main ────────────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
@@ -388,8 +527,27 @@ int main(int argc, char **argv) {
     s.cut_dB       = -6.0f;
     s.release_sec  = 10.0f;
 
+    /* ring-out defaults */
+    s.ro_bus         = 1;
+    s.ro_ceiling_db  = 0.0f;    /* don't push a monitor past unity by default */
+    s.ro_step_db     = 1.0f;
+    s.ro_margin_db   = 6.0f;
+    s.ro_max_notches = 8;
+
+    enum { OPT_RINGOUT = 1000, OPT_RO_BUS, OPT_RO_CEIL,
+           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN };
+    static struct option long_opts[] = {
+        {"ringout",            no_argument,       0, OPT_RINGOUT},
+        {"ringout-bus",        required_argument, 0, OPT_RO_BUS},
+        {"ringout-ceiling",    required_argument, 0, OPT_RO_CEIL},
+        {"ringout-step",       required_argument, 0, OPT_RO_STEP},
+        {"ringout-margin",     required_argument, 0, OPT_RO_MARGIN},
+        {"ringout-max-notches",required_argument, 0, OPT_RO_MAXN},
+        {0, 0, 0, 0}
+    };
+
     int opt, ip_set = 0;
-    while ((opt = getopt(argc, argv, "i:c:s:t:d:r:vh")) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:c:s:t:d:r:vh", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'i': strncpy(s.ip, optarg, sizeof(s.ip) - 1); ip_set = 1; break;
         case 'c': s.channel      = atoi(optarg); break;
@@ -398,19 +556,34 @@ int main(int argc, char **argv) {
         case 'd': s.cut_dB       = atof(optarg); break;
         case 'r': s.release_sec  = atof(optarg); break;
         case 'v': s.verbose      = 1;            break;
+        case OPT_RINGOUT:   s.ringout        = 1;            break;
+        case OPT_RO_BUS:    s.ro_bus         = atoi(optarg); break;
+        case OPT_RO_CEIL:   s.ro_ceiling_db  = atof(optarg); break;
+        case OPT_RO_STEP:   s.ro_step_db     = atof(optarg); break;
+        case OPT_RO_MARGIN: s.ro_margin_db   = atof(optarg); break;
+        case OPT_RO_MAXN:   s.ro_max_notches = atoi(optarg); break;
         default:
         case 'h':
             fprintf(stderr,
                 "usage: XAir_ToastSaver -i <ip> [-c <ch 1-18>] [-s <slot 1-4>]\n"
                 "                       [-t <threshold_dB>] [-d <cut_dB>]\n"
                 "                       [-r <release_sec>] [-v]\n"
+                "       XAir_ToastSaver -i <ip> --ringout [--ringout-bus N]\n"
+                "                       [--ringout-ceiling dB] [--ringout-step dB]\n"
+                "                       [--ringout-margin dB] [--ringout-max-notches N]\n"
                 "  -i  XR18 IP address (required)\n"
                 "  -c  RTA source channel 1-18 (default: 1)\n"
                 "  -s  FX slot with TEQ, 1-4 (default: 4)\n"
                 "  -t  spike threshold in dB above noise floor (default: 20)\n"
                 "  -d  notch cut depth in dB, negative (default: -6)\n"
                 "  -r  seconds before a notch is released (default: 10)\n"
-                "  -v  verbose text output (disables live display)\n");
+                "  -v  verbose text output (disables live display)\n"
+                "  --ringout              proactive ring-out mode (drives a monitor bus)\n"
+                "  --ringout-bus N        target monitor bus 1-6 (default: 1)\n"
+                "  --ringout-ceiling dB   hard gain ceiling (default: 0)\n"
+                "  --ringout-step dB      ramp/back-off increment (default: 1)\n"
+                "  --ringout-margin dB    stop once this much headroom is gained (default: 6)\n"
+                "  --ringout-max-notches N stop after N notches (default: 8)\n");
             return opt == 'h' ? 0 : 1;
         }
     }
@@ -427,6 +600,17 @@ int main(int argc, char **argv) {
     }
     if (s.cut_dB > 0.0f) {
         fprintf(stderr, "warning: cut_dB should be negative; got %.1f\n", s.cut_dB);
+    }
+    if (s.ringout) {
+        if (s.ro_bus < 1 || s.ro_bus > 6) {
+            fprintf(stderr, "error: --ringout-bus must be 1-6\n"); return 1;
+        }
+        if (s.ro_step_db <= 0.0f) {
+            fprintf(stderr, "error: --ringout-step must be > 0\n"); return 1;
+        }
+        if (s.ro_max_notches < 1) {
+            fprintf(stderr, "error: --ringout-max-notches must be >= 1\n"); return 1;
+        }
     }
 
     signal(SIGINT,  sig_handler);
@@ -466,6 +650,15 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (s.verbose) printf("connected to %s\n", s.ip);
+    }
+
+    /* ── ring-out (proactive) takes its own flow ── */
+    if (s.ringout) {
+        run_ringout(&s);
+        cleanup_notches(&s);
+        close(s.fd);
+        printf("toast saver (ring-out) stopped\n");
+        return 0;
     }
 
     /* ── configure RTA source and subscribe ── */
