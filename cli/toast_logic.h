@@ -35,4 +35,12 @@ void update_baseline(float *baseline, const float *bins, int n, float alpha);
 int is_narrow_peak(const float *bins, int n_bins, int peak_bin,
                    int skip, int span, float min_db);
 
+/* XAir fader/level value encoding (piecewise, from the XAir OSC cheat-sheet).
+ * Converts between a fader OSC float [0.0,1.0] and dB. Used by the ring-out
+ * gain drive (T-022) to command /bus/N/mix/fader by dB.
+ *   fader_db_to_float(+10) = 1.0, (0) = 0.75, (-10) = 0.5, (-90) = 0.0
+ * Out-of-range dB clamps to [0.0, 1.0]. */
+float fader_db_to_float(float dB);
+float fader_float_to_db(float f);
+
 #endif /* TOAST_LOGIC_H */

@@ -194,6 +194,28 @@ int main(void) {
             is_narrow_peak(bins, 100, 50, 2, 3, 10.0f), 1);
     }
 
+    /* ── fader_db_to_float / fader_float_to_db ───────────────────────────── */
+
+    {
+        ASSERT_FLOAT_EQ("fader_db_to_float: +10 dB = 1.000",   fader_db_to_float(10.0f),   1.0f);
+        ASSERT_FLOAT_EQ("fader_db_to_float:   0 dB = 0.750",   fader_db_to_float(0.0f),    0.75f);
+        ASSERT_FLOAT_EQ("fader_db_to_float: -10 dB = 0.500",   fader_db_to_float(-10.0f),  0.5f);
+        ASSERT_FLOAT_EQ("fader_db_to_float: -30 dB = 0.250",   fader_db_to_float(-30.0f),  0.25f);
+        ASSERT_FLOAT_EQ("fader_db_to_float: -60 dB = 0.0625",  fader_db_to_float(-60.0f),  0.0625f);
+        ASSERT_FLOAT_EQ("fader_db_to_float: -90 dB = 0.000",   fader_db_to_float(-90.0f),  0.0f);
+        ASSERT_FLOAT_EQ("fader_db_to_float: -120 dB clamps 0", fader_db_to_float(-120.0f), 0.0f);
+
+        ASSERT_FLOAT_EQ("fader_float_to_db: 1.000  = +10 dB",  fader_float_to_db(1.0f),     10.0f);
+        ASSERT_FLOAT_EQ("fader_float_to_db: 0.750  =   0 dB",  fader_float_to_db(0.75f),     0.0f);
+        ASSERT_FLOAT_EQ("fader_float_to_db: 0.500  = -10 dB",  fader_float_to_db(0.5f),    -10.0f);
+        ASSERT_FLOAT_EQ("fader_float_to_db: 0.250  = -30 dB",  fader_float_to_db(0.25f),   -30.0f);
+        ASSERT_FLOAT_EQ("fader_float_to_db: 0.0625 = -60 dB",  fader_float_to_db(0.0625f), -60.0f);
+        ASSERT_FLOAT_EQ("fader_float_to_db: 0.000  = -90 dB",  fader_float_to_db(0.0f),    -90.0f);
+
+        ASSERT_FLOAT_EQ("fader round-trip:   0 dB", fader_float_to_db(fader_db_to_float(0.0f)),   0.0f);
+        ASSERT_FLOAT_EQ("fader round-trip: -20 dB", fader_float_to_db(fader_db_to_float(-20.0f)), -20.0f);
+    }
+
     printf("\n%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }
