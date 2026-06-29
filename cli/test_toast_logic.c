@@ -216,6 +216,210 @@ int main(void) {
         ASSERT_FLOAT_EQ("fader round-trip: -20 dB", fader_float_to_db(fader_db_to_float(-20.0f)), -20.0f);
     }
 
+    /* ── toast_step ─────────────────────────────────────────────────────── */
+
+    {
+        /* Spike at bin 56 (par 18, 1kHz) for 3 frames → NOTCH on frame 3 */
+        float bins[100], baseline[100];
+        memset(bins,     0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+        bins[56] = 25.0f; /* 25 dB above baseline, threshold = 20 dB */
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 10.0f, 3, 10.0f, 2, 3);
+
+        ToastAction out[32];
+
+        /* frame 1: confirm_hold[17] == 1, no notch */
+        int n = toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("toast_step tracer: frame 1 → 0 actions", n, 0);
+
+        /* frame 2: confirm_hold[17] == 2, still no notch */
+        n = toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("toast_step tracer: frame 2 → 0 actions", n, 0);
+
+        /* frame 3: confirm_hold[17] == 3 >= confirm_frames → NOTCH */
+        n = toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("toast_step tracer: frame 3 → 1 action", n, 1);
+        ASSERT_INT_EQ("toast_step tracer: action is TOAST_NOTCH", out[0].op, TOAST_NOTCH);
+        ASSERT_INT_EQ("toast_step tracer: geq_par == 18", out[0].geq_par, 18);
+    }
+
+    {
+        /* After notch: feed bin 56 below release_thr for release_frames → RELEASE_RAMP each, RELEASE_DONE at end */
+        /* threshold=20, release_thr=10; baseline=0, so bins[56] < 10 triggers release */
+        float bins[100], baseline[100];
+        memset(bins, 0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+        bins[56] = 25.0f;
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+        /* release_frames = 5 * 20 = 100 */
+
+        ToastAction out[32];
+        /* Get a notch placed first (3 frames of spike) */
+        for (int i = 0; i < 3; i++) toast_step(&st, bins, baseline, out, 32);
+
+        /* Now go quiet: bins[56] = 0 < baseline[56] + release_thr (=10) */
+        bins[56] = 0.0f;
+
+        int ramp_seen = 0, done_seen = 0;
+        for (int f = 0; f < 100; f++) {
+            int n = toast_step(&st, bins, baseline, out, 32);
+            for (int i = 0; i < n; i++) {
+                if (out[i].op == TOAST_RELEASE_RAMP && out[i].geq_par == 18) ramp_seen++;
+                if (out[i].op == TOAST_RELEASE_DONE && out[i].geq_par == 18) done_seen++;
+            }
+        }
+        ASSERT_INT_EQ("toast_step release: RELEASE_RAMP seen 99 times", ramp_seen, 99);
+        ASSERT_INT_EQ("toast_step release: RELEASE_DONE seen once", done_seen, 1);
+        ASSERT_INT_EQ("toast_step release: band inactive after done", st.active[17], 0);
+    }
+
+    {
+        /* After RELEASE_DONE, spike again → notch fires again (re-trigger) */
+        float bins[100], baseline[100];
+        memset(bins, 0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+        bins[56] = 25.0f;
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+
+        ToastAction out[32];
+        /* Place notch (3 frames spike) */
+        for (int i = 0; i < 3; i++) toast_step(&st, bins, baseline, out, 32);
+        /* Full release (100 quiet frames) */
+        bins[56] = 0.0f;
+        for (int i = 0; i < 100; i++) toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("re-trigger: band inactive after release", st.active[17], 0);
+
+        /* Spike again for 3 frames → new NOTCH */
+        bins[56] = 25.0f;
+        int notch2 = 0;
+        for (int i = 0; i < 3; i++) {
+            int cnt = toast_step(&st, bins, baseline, out, 32);
+            for (int k = 0; k < cnt; k++)
+                if (out[k].op == TOAST_NOTCH && out[k].geq_par == 18) notch2++;
+        }
+        ASSERT_INT_EQ("re-trigger: second notch fires", notch2, 1);
+        ASSERT_INT_EQ("re-trigger: band active again", st.active[17], 1);
+    }
+
+    {
+        /* Mid-release: spike returns before release_frames → snap back to cut_val */
+        float bins[100], baseline[100];
+        memset(bins, 0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+        bins[56] = 25.0f;
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+
+        ToastAction out[32];
+        /* Place notch */
+        for (int i = 0; i < 3; i++) toast_step(&st, bins, baseline, out, 32);
+        float saved_cut = st.cut_val[17];
+
+        /* 5 quiet frames (partial release) */
+        bins[56] = 0.0f;
+        for (int i = 0; i < 5; i++) toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("snap-back: release_hold > 0 after partial release",
+                      st.release_hold[17] > 0, 1);
+
+        /* Spike returns — next step should snap back */
+        bins[56] = 25.0f;
+        int cnt = toast_step(&st, bins, baseline, out, 32);
+        int snap_found = 0;
+        for (int i = 0; i < cnt; i++) {
+            if (out[i].op == TOAST_RELEASE_RAMP && out[i].geq_par == 18
+                    && fabsf(out[i].ramp_val - saved_cut) < 0.001f)
+                snap_found = 1;
+        }
+        ASSERT_INT_EQ("snap-back: RELEASE_RAMP emitted with ramp_val == cut_val", snap_found, 1);
+        ASSERT_INT_EQ("snap-back: release_hold reset to 0", st.release_hold[17], 0);
+    }
+
+    {
+        /* Narrowness gate: broadband — bin 56 is highest but neighbors nearly equal */
+        float bins[100], baseline[100];
+        memset(bins, 0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+        /* 24 dBFS across 50-62, spike to 25 at 56 (1 dB above neighbors, < 10 dB min) */
+        for (int i = 50; i <= 62; i++) bins[i] = 24.0f;
+        bins[56] = 25.0f;
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+
+        ToastAction out[32];
+        int notch_seen = 0;
+        for (int i = 0; i < 5; i++) {
+            int cnt = toast_step(&st, bins, baseline, out, 32);
+            for (int k = 0; k < cnt; k++)
+                if (out[k].op == TOAST_NOTCH) notch_seen++;
+        }
+        ASSERT_INT_EQ("narrowness gate: broadband → no notch", notch_seen, 0);
+        ASSERT_INT_EQ("narrowness gate: no bands active", st.active[17], 0);
+    }
+
+    {
+        /* from_profile: band 5 (par 5, index 4) pinned — never auto-released */
+        float bins[100], baseline[100];
+        memset(bins, 0, sizeof(bins));
+        memset(baseline, 0, sizeof(baseline));
+
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+
+        /* Pin band 4 (par 5) as a profile notch */
+        st.active[4]       = 1;
+        st.from_profile[4] = 1;
+        st.cut_val[4]      = db_to_geq_float(-6.0f);
+
+        ToastAction out[32];
+        int release_seen = 0;
+        /* Feed quiet for release_frames + 1 = 101 frames */
+        for (int f = 0; f < 101; f++) {
+            int cnt = toast_step(&st, bins, baseline, out, 32);
+            for (int i = 0; i < cnt; i++) {
+                if ((out[i].op == TOAST_RELEASE_RAMP || out[i].op == TOAST_RELEASE_DONE)
+                        && out[i].geq_par == 5)
+                    release_seen++;
+            }
+        }
+        ASSERT_INT_EQ("from_profile: no RELEASE_* emitted for pinned band", release_seen, 0);
+        ASSERT_INT_EQ("from_profile: band still active", st.active[4], 1);
+    }
+
+    {
+        /* Confirm-counter reset: frame 1 peaks at par 10 (bin 33), frame 2 at par 15 (bin 46)
+         * → confirm_hold[9] must be 0 after frame 2 */
+        float bins[100], baseline[100];
+        memset(baseline, 0, sizeof(baseline));
+
+        /* par 10 = TOAST_GEQ_BIN[9] = bin 30, par 15 = TOAST_GEQ_BIN[14] = bin 46 */
+        ToastState st;
+        toast_state_init(&st, 20.0f, -6.0f, 5.0f, 3, 10.0f, 2, 3);
+
+        ToastAction out[32];
+
+        /* Frame 1: spike at bin 30 (par 10) */
+        memset(bins, 0, sizeof(bins));
+        bins[30] = 25.0f;
+        toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("confirm-reset: confirm_hold[9] == 1 after frame 1", st.confirm_hold[9], 1);
+
+        /* Frame 2: spike at bin 46 (par 15 — different par) */
+        memset(bins, 0, sizeof(bins));
+        bins[46] = 25.0f;
+        toast_step(&st, bins, baseline, out, 32);
+        ASSERT_INT_EQ("confirm-reset: confirm_hold[9] == 0 after frame 2 (different par)",
+                      st.confirm_hold[9], 0);
+        ASSERT_INT_EQ("confirm-reset: confirm_hold[14] == 1 after frame 2", st.confirm_hold[14], 1);
+    }
+
     printf("\n%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

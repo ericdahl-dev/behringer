@@ -3,6 +3,102 @@
 #include <string.h>
 #include <stdlib.h>
 
+void toast_state_init(ToastState *st,
+                      float threshold_dB, float cut_dB,
+                      float release_sec,  int   confirm_frames,
+                      float narrow_db,    int   narrow_skip,
+                      int   narrow_span) {
+    memset(st, 0, sizeof(*st));
+    st->threshold_dB   = threshold_dB;
+    st->cut_dB         = cut_dB;
+    st->release_frames = (int)(release_sec * 20.0f);
+    st->confirm_frames = confirm_frames;
+    st->narrow_db      = narrow_db;
+    st->narrow_skip    = narrow_skip;
+    st->narrow_span    = narrow_span;
+}
+
+int toast_step(ToastState *st,
+               const float *bins,
+               const float *baseline,
+               ToastAction *out, int cap) {
+    int n = 0;
+    float release_thr = st->threshold_dB / 2.0f;
+
+    /* Release pass */
+    for (int j = 0; j < 31 && n < cap; j++) {
+        if (!st->active[j]) continue;
+        if (st->from_profile[j]) continue;
+        int bin = TOAST_GEQ_BIN[j];
+        if (bins[bin] < baseline[bin] + release_thr) {
+            st->release_hold[j]++;
+            float t = (float)st->release_hold[j] / (float)st->release_frames;
+            if (t > 1.0f) t = 1.0f;
+            float ramp_val = st->cut_val[j] + (0.5f - st->cut_val[j]) * t;
+            if (st->release_hold[j] >= st->release_frames) {
+                out[n].op       = TOAST_RELEASE_DONE;
+                out[n].geq_par  = j + 1;
+                out[n].ramp_val = 0.5f;
+                out[n].cut_val  = st->cut_val[j];
+                n++;
+                st->active[j]       = 0;
+                st->release_hold[j] = 0;
+            } else {
+                out[n].op       = TOAST_RELEASE_RAMP;
+                out[n].geq_par  = j + 1;
+                out[n].ramp_val = ramp_val;
+                out[n].cut_val  = st->cut_val[j];
+                n++;
+            }
+        } else {
+            if (st->release_hold[j] > 0) {
+                /* Feedback returned mid-ramp — snap back to full cut */
+                st->release_hold[j] = 0;
+                out[n].op       = TOAST_RELEASE_RAMP;
+                out[n].geq_par  = j + 1;
+                out[n].ramp_val = st->cut_val[j];
+                out[n].cut_val  = st->cut_val[j];
+                n++;
+            }
+        }
+    }
+
+    /* Detection pass */
+    int peak_bin = -1;
+    if (!detect_peak(bins, baseline, st->threshold_dB, &peak_bin)) {
+        for (int j = 0; j < 31; j++) st->confirm_hold[j] = 0;
+        return n;
+    }
+    if (!is_narrow_peak(bins, 100, peak_bin,
+                        st->narrow_skip, st->narrow_span, st->narrow_db)) {
+        for (int j = 0; j < 31; j++) st->confirm_hold[j] = 0;
+        return n;
+    }
+
+    int par = bin_to_geq_par(peak_bin);
+    for (int j = 0; j < 31; j++)
+        st->confirm_hold[j] = (j == par - 1) ? st->confirm_hold[j] + 1 : 0;
+
+    int j = par - 1;
+    if (st->active[j]) return n;
+    if (st->confirm_hold[j] < st->confirm_frames) return n;
+
+    st->confirm_hold[j] = 0;
+    float cut_val = db_to_geq_float(st->cut_dB);
+    if (n < cap) {
+        out[n].op      = TOAST_NOTCH;
+        out[n].geq_par = par;
+        out[n].cut_val = cut_val;
+        out[n].ramp_val = 0.0f;
+        n++;
+    }
+    st->active[j]       = 1;
+    st->cut_val[j]      = cut_val;
+    st->release_hold[j] = 0;
+
+    return n;
+}
+
 const int TOAST_GEQ_BIN[31] = {
      0,  3,  7, 10, 13, 16, 20, 23, 26, 30,
     33, 36, 39, 43, 46, 49, 53, 56, 59, 63,
