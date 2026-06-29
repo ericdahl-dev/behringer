@@ -102,8 +102,28 @@ void test_validate_rejects_negative_source(void) {
     TEST_ASSERT_FALSE(config_validate(&cfg));
 }
 
+void test_defaults_fdr_chan_is_32(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    TEST_ASSERT_EQUAL_INT(32, cfg.fdr_chan_count);
+}
+
+void test_validate_rejects_bad_chan_count(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.fdr_chan_count = 17;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_accepts_chan_16(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.fdr_chan_count = 16;
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_defaults_fdr_chan_is_32);
+    RUN_TEST(test_validate_rejects_bad_chan_count);
+    RUN_TEST(test_validate_accepts_chan_16);
     RUN_TEST(test_defaults_model_is_xr18);
     RUN_TEST(test_defaults_fx_slot_is_1);
     RUN_TEST(test_defaults_ip_set);
