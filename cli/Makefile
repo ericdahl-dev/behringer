@@ -27,13 +27,13 @@ XR18: X32lib
 X32Tap: X32lib
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c x32tap_logic.c $(LDFLAGS) -lncursesw
 
-test_toast_logic:
+test_toast_logic: | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c -lm
 
-test_x32tap:
+test_x32tap: | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c x32tap_logic.c -lm
 
-test_ringout_logic: dirs
+test_ringout_logic: | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c ringout_logic.c toast_logic.c -lm
 
 check: test_toast_logic test_x32tap test_ringout_logic

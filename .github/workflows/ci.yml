@@ -1,0 +1,37 @@
+name: CI
+
+# Host-side tests for the three components. None of these need real hardware or
+# a mixer — they exercise the pure logic that is deliberately split out from the
+# platform/IO code (cli/*_logic.c, esp32 X32Link logic, ToastSaverCore).
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  cli-tests:
+    name: CLI host tests (make check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run cli unit tests
+        run: make -C cli check
+
+  esp32-host-tests:
+    name: ESP32 host logic tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Unity submodule
+        run: git submodule update --init --depth 1 esp32/lib/unity
+      - name: Build and run esp32 host tests
+        run: make -C esp32/test
+
+  toastsavercore-tests:
+    name: ToastSaverCore (Swift)
+    runs-on: ubuntu-latest
+    container: swift:5.9
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test
+        run: swift test --package-path ios/ToastSaverCore

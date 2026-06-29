@@ -1,5 +1,7 @@
 # behringer — X32 / XR18 control suite
 
+[![CI](https://github.com/ericdahl-dev/behringer/actions/workflows/ci.yml/badge.svg)](https://github.com/ericdahl-dev/behringer/actions/workflows/ci.yml)
+
 Tools for automating and syncing Behringer **X32 / XR18** digital mixers over
 OSC. The through-line is an automatic **feedback destroyer** ("ToastSaver" —
 watch the RTA, notch the ringing band) built for several platforms, plus a
