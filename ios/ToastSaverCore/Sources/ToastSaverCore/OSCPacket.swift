@@ -37,6 +37,13 @@ public struct OSCMessage {
         bytes = out
     }
 
+    /// Zero-arg handshake for XR18/XAir (`/xinfo`). Use `handshake(for:)` for model-agnostic code.
+    public static func xinfo()   -> OSCMessage { OSCMessage("/xinfo") }
+    /// Zero-arg keepalive sent every ~5 s to hold the RTA subscription.
+    public static func xremote() -> OSCMessage { OSCMessage("/xremote") }
+    /// Zero-arg handshake using the model's `handshakePath` (`/xinfo` or `/info`).
+    public static func handshake(for model: MixerModel) -> OSCMessage { OSCMessage(model.handshakePath) }
+
     /// Convenience: a single GEQ-band cut for an FX-slot graphic EQ.
     /// `/fx/{slot}/par/{par:02} ,f {geqFloat(dB)}`.
     public static func geqBand(slot: Int, par: Int, dB: Float) -> OSCMessage {
