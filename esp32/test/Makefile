@@ -9,15 +9,17 @@ TRACKER = ../X32Link/bpm_tracker.c
 CFG     = ../X32Link/app_config.c
 OSC     = ../X32Link/osc_out.c
 MIDICALC = ../X32MidiClock/midi_bpm_calc.c
+PUB     = ../X32Link/bpm_publisher.c
 
 .PHONY: all clean
 
-all: test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc
+all: test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher
 	./test_bpm_tracker
 	./test_link_protocol
 	./test_app_config
 	./test_osc_out
 	./test_midi_bpm_calc
+	./test_bpm_publisher
 	./check_docs.sh
 
 test_bpm_tracker: test_bpm_tracker.c $(TRACKER) $(UNITY)
@@ -35,5 +37,8 @@ test_osc_out: test_osc_out.c $(OSC) $(UNITY)
 test_midi_bpm_calc: test_midi_bpm_calc.c $(MIDICALC) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
+test_bpm_publisher: test_bpm_publisher.c $(PUB) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@ -lm
+
 clean:
-	rm -f test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc
+	rm -f test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher

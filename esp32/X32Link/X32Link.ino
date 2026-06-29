@@ -3,7 +3,7 @@
 #include "app_config.h"
 #include "tempo_source.h"
 #include "link_listener.h"  // for the loop() status counters (rx/mcast) in Link mode
-#include "bpm_tracker.h"
+#include "bpm_publisher.h"
 #include "osc_sender.h"
 #include "web_config.h"
 
@@ -59,27 +59,19 @@ static void led_task(void*) {
 }
 
 static void bpm_task(void*) {
-    uint32_t last_send_ms = 0;
-    uint32_t last_bar_ms  = 0;
+    bpm_publisher_init(tempo_source_threshold(), LINK_SEND_INTERVAL_MS, LINK_REFRESH_BARS);
     for (;;) {
         tempo_source_poll();
-        float    bpm = tempo_source_bpm();
-        uint32_t now = (uint32_t)millis();
-
-        bool changed = bpm > 0.0f && bpm_tracker_update(bpm);
-        bool refresh = bpm > 0.0f && tempo_source_active() &&
-                       now - last_bar_ms >= (uint32_t)(4 * LINK_REFRESH_BARS * 60000.0f / bpm);
-
-        if ((changed || refresh) && (now - last_send_ms) >= LINK_SEND_INTERVAL_MS) {
-            osc_send_bpm(bpm);
-            last_send_ms = now;
-            if (refresh) last_bar_ms = now;
+        PublishDecision d = bpm_publisher_step(tempo_source_bpm(),
+                                               tempo_source_active(),
+                                               (uint32_t)millis());
+        if (d.send) {
+            osc_send_bpm(d.bpm);
             xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
-            g_current_bpm = bpm;
+            g_current_bpm = d.bpm;
             xSemaphoreGive(g_bpm_mutex);
-            Serial.printf("[X32Sync] BPM %.2f → OSC sent%s\n", bpm, changed ? "" : " (refresh)");
+            Serial.printf("[X32Sync] BPM %.2f → OSC sent%s\n", d.bpm, d.refresh ? " (refresh)" : "");
         }
-        if (changed) last_bar_ms = now;
         vTaskDelay(pdMS_TO_TICKS(tempo_source_poll_ms()));
     }
 }
@@ -163,7 +155,6 @@ void setup() {
 
     tempo_source_begin();    // Link joins multicast here; no-op for MIDI
     osc_sender_begin();
-    bpm_tracker_init(0.0f, tempo_source_threshold());
     g_bpm_mutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(bpm_task, "bpm", 4096, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(led_task, "led", 2048, NULL, 1, NULL, 0);
