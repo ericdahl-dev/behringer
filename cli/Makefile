@@ -33,9 +33,13 @@ test_toast_logic:
 test_x32tap:
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c x32tap_logic.c -lm
 
-check: test_toast_logic test_x32tap
+test_ringout_logic: dirs
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c ringout_logic.c toast_logic.c -lm
+
+check: test_toast_logic test_x32tap test_ringout_logic
 	$(BUILD)/test_toast_logic
 	$(BUILD)/test_x32tap
+	$(BUILD)/test_ringout_logic
 
 clean:
 	$(RM) $(BUILD)
