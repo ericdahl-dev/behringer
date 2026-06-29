@@ -23,6 +23,8 @@
 #include <netinet/in.h>
 #include <stdint.h>
 #include "toast_logic.h"
+#include "mic_cal.h"
+#include "rta_bins.h"
 
 extern int Xsprint(char *bd, int index, char format, void *bs);
 
@@ -76,6 +78,7 @@ typedef struct {
     float   baseline_accum[100];
     int     baseline_count;
     int     baseline_ready;
+    float   mic_corr[100];   /* per-bin dB correction from --mic-cal (0 = none) */
 
     /* notch state */
     NotchState notches[31];  /* index 0 = GEQ par 01 */
@@ -399,6 +402,7 @@ static void cleanup_notches(AppState *s) {
 
 static void handle_meters4(const uint8_t *blob, int blen, AppState *s) {
     if (parse_meters4_blob(blob, blen, s->bins) != 0) return;
+    for (int i = 0; i < RTA_BIN_COUNT; i++) s->bins[i] += s->mic_corr[i];  /* mic-cal */
 
     /* baseline calibration */
     if (!s->baseline_ready) {
@@ -508,9 +512,27 @@ static void run_ringout(AppState *s) {
         int blob_start  = addr_padded + tag_padded;
         if (blob_start >= r_len) continue;
         parse_meters4_blob((uint8_t *)r_buf + blob_start, r_len - blob_start, s->bins);
+        for (int i = 0; i < RTA_BIN_COUNT; i++) s->bins[i] += s->mic_corr[i];  /* mic-cal */
     }
 
     ringout_panic(s);
+}
+
+/* Load a mic calibration file and bake it into per-RTA-bin dB corrections. */
+static void load_mic_cal(AppState *s, const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { fprintf(stderr, "mic-cal: cannot open %s\n", path); return; }
+    char buf[16384];
+    int n = (int)fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n < 0 ? 0 : n] = '\0';
+    MicCal cal;
+    if (mic_cal_parse(buf, n, &cal) != 0) {
+        fprintf(stderr, "mic-cal: parse failed (%s) — no correction applied\n", path);
+        return;
+    }
+    mic_cal_bin_corrections(&cal, RTA_BIN_FREQ, s->mic_corr, RTA_BIN_COUNT);
+    fprintf(stderr, "mic-cal: %d points from %s applied to RTA bins\n", cal.n, path);
 }
 
 /* ── main ────────────────────────────────────────────────────────────────── */
@@ -535,8 +557,9 @@ int main(int argc, char **argv) {
     s.ro_max_notches = 8;
 
     enum { OPT_RINGOUT = 1000, OPT_RO_BUS, OPT_RO_CEIL,
-           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN };
+           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_MIC_CAL };
     static struct option long_opts[] = {
+        {"mic-cal",            required_argument, 0, OPT_MIC_CAL},
         {"ringout",            no_argument,       0, OPT_RINGOUT},
         {"ringout-bus",        required_argument, 0, OPT_RO_BUS},
         {"ringout-ceiling",    required_argument, 0, OPT_RO_CEIL},
@@ -556,6 +579,7 @@ int main(int argc, char **argv) {
         case 'd': s.cut_dB       = atof(optarg); break;
         case 'r': s.release_sec  = atof(optarg); break;
         case 'v': s.verbose      = 1;            break;
+        case OPT_MIC_CAL:   load_mic_cal(&s, optarg);        break;
         case OPT_RINGOUT:   s.ringout        = 1;            break;
         case OPT_RO_BUS:    s.ro_bus         = atoi(optarg); break;
         case OPT_RO_CEIL:   s.ro_ceiling_db  = atof(optarg); break;
@@ -578,6 +602,7 @@ int main(int argc, char **argv) {
                 "  -d  notch cut depth in dB, negative (default: -6)\n"
                 "  -r  seconds before a notch is released (default: 10)\n"
                 "  -v  verbose text output (disables live display)\n"
+                "  --mic-cal <file>       REW .cal / factory .txt mic correction for the RTA\n"
                 "  --ringout              proactive ring-out mode (drives a monitor bus)\n"
                 "  --ringout-bus N        target monitor bus 1-6 (default: 1)\n"
                 "  --ringout-ceiling dB   hard gain ceiling (default: 0)\n"
