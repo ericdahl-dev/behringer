@@ -16,7 +16,7 @@ X32lib:
 	@$(MAKE) -C $@ all
 
 XAir_ToastSaver: X32lib
-	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c toast_logic.c mic_cal.c rta_bins.c $(LDFLAGS)
 
 XAir: X32lib
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c $(LDFLAGS)
@@ -39,11 +39,15 @@ test_ringout_logic: | dirs
 test_rta_bins: | dirs
 	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c rta_bins.c toast_logic.c -lm
 
-check: test_toast_logic test_x32tap test_ringout_logic test_rta_bins
+test_mic_cal: | dirs
+	$(CC) $(CFLAGS) -o $(BUILD)/$@ $@.c mic_cal.c -lm
+
+check: test_toast_logic test_x32tap test_ringout_logic test_rta_bins test_mic_cal
 	$(BUILD)/test_toast_logic
 	$(BUILD)/test_x32tap
 	$(BUILD)/test_ringout_logic
 	$(BUILD)/test_rta_bins
+	$(BUILD)/test_mic_cal
 
 clean:
 	$(RM) $(BUILD)
