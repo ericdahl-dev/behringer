@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <stdint.h>
 #include "toast_logic.h"
+#include "ringout_logic.h"
 #include "mic_cal.h"
 #include "rta_bins.h"
 
@@ -96,6 +97,7 @@ typedef struct {
     int    ro_max_notches;   /* stop after this many notches */
     float  ro_orig_fader;    /* captured original bus fader [0..1] — restore target */
     int    ro_orig_captured; /* 1 once ro_orig_fader is valid */
+    int    ro_supervised;    /* --ringout-supervised: pause for operator each raise */
     float  ro_cur_gain_db;   /* gain currently commanded on the bus */
 } AppState;
 
@@ -441,13 +443,24 @@ static void handle_meters4(const uint8_t *blob, int blen, AppState *s) {
     if (!s->verbose) draw_display(s);
 }
 
-/* ── ring-out flow (T-022: setup + safe hold; control loop is T-023) ──────── */
+/* ── ring-out flow (T-023: supervised ramp/detect/notch control loop) ─────── */
+
+/* Supervised gate: in --ringout-supervised, pause before each gain raise until
+ * the operator presses Enter ('q' aborts). Returns 1 to proceed, 0 to stop. */
+static int ringout_prompt_continue(float next_db) {
+    printf("[ring-out] Enter to raise to %.1fdB (q+Enter to stop): ", next_db);
+    fflush(stdout);
+    int c = getchar();
+    if (c == 'q' || c == 'Q') { g_running = 0; return 0; }
+    while (c != '\n' && c != EOF) c = getchar();
+    return 1;
+}
 
 /* Capture the bus's current fader (so it can always be restored), insert the
- * notch TEQ on that bus, assert a known start gain, then hold — keeping the RTA
- * subscription alive — until the operator stops it. The ramp/detect/notch loop
- * (driving ringout_step from ringout_logic) is added in T-023; this proves the
- * gain-drive, insert, and panic-restore plumbing end to end. */
+ * notch TEQ on that bus, calibrate the noise floor, then ramp gain up driving
+ * the pure ringout_step() controller — notching each ring as it appears — until
+ * a ceiling / target-margin / max-notch stop or an abort. The fader is always
+ * restored on exit; notches are kept only if the run completed cleanly. */
 static void run_ringout(AppState *s) {
     char path[40];
 
@@ -486,36 +499,128 @@ static void run_ringout(AppState *s) {
     if (start_db > s->ro_ceiling_db)
         printf("[ring-out] WARNING: start gain %.1fdB exceeds ceiling %.1fdB; "
                "clamped down.\n", start_db, s->ro_ceiling_db);
-    printf("[ring-out] plumbing ready; ramp/detect/notch control loop lands in "
-           "T-023.\n");
-    printf("[ring-out] holding — Ctrl-C to restore the bus fader and exit.\n");
+    printf("[ring-out] calibrating noise floor (%d frames)...\n", BASELINE_FRAMES);
 
-    /* hold loop: keep RTA/keepalive alive; do NOT drive gain yet (T-023). */
+    /* ── baseline calibration at start gain ── */
+    double accum[100];
+    for (int i = 0; i < 100; i++) accum[i] = 0.0;
+    int    got = 0;
     double last_xremote = now_sec();
-    char r_buf[BSIZE];
-    while (g_running) {
+    char   r_buf[BSIZE];
+    while (g_running && got < BASELINE_FRAMES) {
         double t = now_sec();
         if (t - last_xremote >= XREMOTE_TIMEOUT) {
-            osc_no_args(s, "/xremote");
-            subscribe_meters4(s);
-            last_xremote = t;
+            osc_no_args(s, "/xremote"); subscribe_meters4(s); last_xremote = t;
         }
         struct timeval tv = {0, 60000};
         fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
         if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) continue;
-
         int r_len = recvfrom(s->fd, r_buf, BSIZE - 1, 0, 0, 0);
-        if (r_len <= 0) continue;
-        if (strcmp(r_buf, "/meters/4") != 0) continue;
-        int addr_padded = ((int)strlen(r_buf) + 1 + 3) & ~3;
-        int tag_padded  = ((int)strlen(r_buf + addr_padded) + 1 + 3) & ~3;
-        int blob_start  = addr_padded + tag_padded;
-        if (blob_start >= r_len) continue;
-        parse_meters4_blob((uint8_t *)r_buf + blob_start, r_len - blob_start, s->bins);
+        if (r_len <= 0 || strcmp(r_buf, "/meters/4") != 0) continue;
+        int ap = ((int)strlen(r_buf) + 1 + 3) & ~3;
+        int tp = ((int)strlen(r_buf + ap) + 1 + 3) & ~3;
+        if (ap + tp >= r_len) continue;
+        if (parse_meters4_blob((uint8_t *)r_buf + ap + tp, r_len - ap - tp, s->bins) != 0) continue;
         for (int i = 0; i < RTA_BIN_COUNT; i++) s->bins[i] += s->mic_corr[i];  /* mic-cal */
+        for (int i = 0; i < 100; i++) accum[i] += s->bins[i];
+        got++;
+    }
+    if (!g_running) { ringout_panic(s); return; }
+    for (int i = 0; i < 100; i++) s->baseline[i] = (float)(accum[i] / (got ? got : 1));
+
+    /* ── configure the controller from the CLI args ── */
+    RingoutConfig cfg;
+    cfg.start_gain_db    = start_db;
+    cfg.ceiling_db       = s->ro_ceiling_db;
+    cfg.step_db          = s->ro_step_db;
+    cfg.target_margin_db = s->ro_margin_db;
+    cfg.max_notches      = s->ro_max_notches;
+    cfg.threshold_db     = s->threshold_dB;
+    cfg.cut_db           = s->cut_dB;
+    cfg.confirm_frames   = CONFIRM_FRAMES;
+    cfg.settle_frames    = 10;          /* ~0.5 s at 20 Hz after a gain change/notch */
+    cfg.stable_frames    = 10;          /* ~0.5 s ring-free before raising */
+    cfg.narrow_skip      = 2;
+    cfg.narrow_span      = 3;
+    cfg.narrow_min_db    = NARROW_DB;
+    RingoutState st;
+    ringout_init(&st, &cfg);
+
+    printf("[ring-out] ramping toward ceiling %.1fdB (step %.1fdB)%s\n",
+           s->ro_ceiling_db, s->ro_step_db, s->ro_supervised ? " — supervised" : "");
+
+    /* ── control loop: one ringout_step() per RTA frame ── */
+    int completed = 0;
+    while (g_running) {
+        double t = now_sec();
+        if (t - last_xremote >= XREMOTE_TIMEOUT) {
+            osc_no_args(s, "/xremote"); subscribe_meters4(s); last_xremote = t;
+        }
+        struct timeval tv = {0, 60000};
+        fd_set fds; FD_ZERO(&fds); FD_SET(s->fd, &fds);
+        if (select(s->fd + 1, &fds, NULL, NULL, &tv) <= 0) continue;
+        int r_len = recvfrom(s->fd, r_buf, BSIZE - 1, 0, 0, 0);
+        if (r_len <= 0 || strcmp(r_buf, "/meters/4") != 0) continue;
+        int ap = ((int)strlen(r_buf) + 1 + 3) & ~3;
+        int tp = ((int)strlen(r_buf + ap) + 1 + 3) & ~3;
+        if (ap + tp >= r_len) continue;
+        if (parse_meters4_blob((uint8_t *)r_buf + ap + tp, r_len - ap - tp, s->bins) != 0) continue;
+        for (int i = 0; i < RTA_BIN_COUNT; i++) s->bins[i] += s->mic_corr[i];  /* mic-cal */
+
+        RingoutAction a = ringout_step(&st, s->bins, s->baseline);
+        switch (a.op) {
+        case RO_RAISE_GAIN:
+            if (s->ro_supervised && !ringout_prompt_continue(a.gain_db)) break;
+            ringout_set_gain(s, a.gain_db);
+            printf("[ring-out] raise -> %.1fdB  (%.1fdB to ceiling, %d notch%s)\n",
+                   a.gain_db, s->ro_ceiling_db - a.gain_db,
+                   st.n_notches, st.n_notches == 1 ? "" : "es");
+            break;
+        case RO_BACK_OFF:
+            ringout_set_gain(s, a.gain_db);
+            printf("[ring-out] back off -> %.1fdB\n", a.gain_db);
+            break;
+        case RO_PLACE_NOTCH: {
+            int j = a.geq_par - 1;
+            send_teq_band(s, a.geq_par, db_to_geq_float(a.cut_db));
+            s->notches[j].active     = 1;
+            s->notches[j].cut_val    = db_to_geq_float(a.cut_db);
+            s->notches[j].notched_at = now_sec();
+            printf("[ring-out] notch par=%02d (%s) %.0fdB at %.1fdB\n",
+                   a.geq_par, GEQ_LABEL[j], a.cut_db, st.cur_gain_db);
+            break;
+        }
+        case RO_DONE:  completed = 1; break;
+        case RO_ABORT: completed = 0; break;
+        case RO_HOLD: default: break;
+        }
+        if (a.op == RO_DONE || a.op == RO_ABORT) break;
     }
 
-    ringout_panic(s);
+    /* ── summary + restore ── */
+    printf("\n[ring-out] ");
+    if (!g_running && st.done_reason == RO_REASON_NONE)
+        printf("interrupted by operator.\n");
+    else if (st.done_reason == RO_REASON_ABORT)
+        printf("ABORTED: %s\n", ringout_reason_str(st.done_reason));
+    else
+        printf("complete: %s\n", ringout_reason_str(st.done_reason));
+
+    printf("[ring-out] notches: ");
+    int any = 0;
+    for (int j = 0; j < 31; j++)
+        if (s->notches[j].active) { printf("%s ", GEQ_LABEL[j]); any = 1; }
+    if (!any) printf("(none)");
+    printf("\n[ring-out] gain-before-feedback margin: %.1f dB above start (%.1fdB)\n",
+           st.margin_db, start_db);
+
+    ringout_panic(s);                 /* always return the fader to the operator's level */
+    if (completed) {
+        printf("[ring-out] notches LEFT in place (the ring-out result).\n");
+    } else {
+        cleanup_notches(s);           /* incomplete run → revert to as-found */
+        printf("[ring-out] notches reverted (run did not complete).\n");
+    }
 }
 
 /* Load a mic calibration file and bake it into per-RTA-bin dB corrections. */
@@ -557,7 +662,7 @@ int main(int argc, char **argv) {
     s.ro_max_notches = 8;
 
     enum { OPT_RINGOUT = 1000, OPT_RO_BUS, OPT_RO_CEIL,
-           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_MIC_CAL };
+           OPT_RO_STEP, OPT_RO_MARGIN, OPT_RO_MAXN, OPT_RO_SUP, OPT_MIC_CAL };
     static struct option long_opts[] = {
         {"mic-cal",            required_argument, 0, OPT_MIC_CAL},
         {"ringout",            no_argument,       0, OPT_RINGOUT},
@@ -566,6 +671,7 @@ int main(int argc, char **argv) {
         {"ringout-step",       required_argument, 0, OPT_RO_STEP},
         {"ringout-margin",     required_argument, 0, OPT_RO_MARGIN},
         {"ringout-max-notches",required_argument, 0, OPT_RO_MAXN},
+        {"ringout-supervised", no_argument,       0, OPT_RO_SUP},
         {0, 0, 0, 0}
     };
 
@@ -586,6 +692,7 @@ int main(int argc, char **argv) {
         case OPT_RO_STEP:   s.ro_step_db     = atof(optarg); break;
         case OPT_RO_MARGIN: s.ro_margin_db   = atof(optarg); break;
         case OPT_RO_MAXN:   s.ro_max_notches = atoi(optarg); break;
+        case OPT_RO_SUP:    s.ro_supervised  = 1;            break;
         default:
         case 'h':
             fprintf(stderr,
@@ -608,7 +715,8 @@ int main(int argc, char **argv) {
                 "  --ringout-ceiling dB   hard gain ceiling (default: 0)\n"
                 "  --ringout-step dB      ramp/back-off increment (default: 1)\n"
                 "  --ringout-margin dB    stop once this much headroom is gained (default: 6)\n"
-                "  --ringout-max-notches N stop after N notches (default: 8)\n");
+                "  --ringout-max-notches N stop after N notches (default: 8)\n"
+                "  --ringout-supervised   pause for Enter before each gain raise\n");
             return opt == 'h' ? 0 : 1;
         }
     }
@@ -679,8 +787,7 @@ int main(int argc, char **argv) {
 
     /* ── ring-out (proactive) takes its own flow ── */
     if (s.ringout) {
-        run_ringout(&s);
-        cleanup_notches(&s);
+        run_ringout(&s);   /* owns all restore: fader always; notches per outcome */
         close(s.fd);
         printf("toast saver (ring-out) stopped\n");
         return 0;
