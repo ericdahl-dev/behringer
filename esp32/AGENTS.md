@@ -28,11 +28,19 @@ bridge and emulator only. Don't edit `cli/` when working here.
 | Host tests | `cd test && make`  (Unity; pure-logic suites, runs on the dev box) |
 
 Notes:
-- **Board:** ESP32-S3 Super Mini (and XIAO). We compile against the
-  `adafruit_qtpy_esp32s3_n4r2` FQBN — it's a generic S3 profile that boots
-  these boards with USB-CDC serial. The beat **LED is a plain LED on GPIO48,
-  active-HIGH** on the Super Mini (`X32Link.ino`: `LED_PIN_NUM`; define
-  `LED_ACTIVE_LOW` for XIAO, `LED_RGB` for a WS2812 board).
+- **Board:** ESP32-S3 Super Mini (and XIAO), or a genuine Adafruit QT Py
+  ESP32-S3. We compile against the `adafruit_qtpy_esp32s3_n4r2` FQBN either
+  way — for the Super Mini/XIAO it's just a generic S3 profile that boots
+  those boards with USB-CDC serial; for the QT Py it's the real board. The
+  beat **LED is a plain LED on GPIO48, active-HIGH** on the Super Mini
+  (`X32Link.ino`: `LED_PIN_NUM`; define `LED_ACTIVE_LOW` for XIAO, `LED_RGB`
+  for a generic WS2812 board). On the **QT Py ESP32-S3** the beat LED is the
+  onboard NeoPixel on **GPIO39**, whose level shifter needs **GPIO38** driven
+  HIGH before it lights — define `BOARD_QTPY_ESP32S3` (implies `LED_RGB`,
+  sets `LED_PIN_NUM`/`LED_PWR_PIN_NUM`). These are compile-time flags with no
+  runtime board detection — set the right one in `X32Link/build_opt.h`
+  (tracked but meant to stay empty at HEAD; edit it locally for the unit in
+  hand, don't commit board-specific flags there) before compiling.
 - Native-USB boards re-enumerate `/dev/ttyACM0` on reset; serial capture is
   flaky right after flashing. The web UI `/status` endpoint is the reliable
   way to read live BPM.
@@ -51,6 +59,7 @@ Notes:
 | `X32Link.ino` | app core: setup/loop, WiFi + AP fallback, FreeRTOS bpm/led tasks, factory reset |
 | `tempo_source.{h,cpp}` | the input **seam** — one interface, dispatches to Link or MIDI by `input_source` |
 | `link_listener.*` + `link_protocol.*` | Link adapter; `link_protocol.c` is our own ~100-line gossip parser (the vendored `lib/link/` SDK is **not** used at runtime) |
+| `link_measurement.{h,c}` + `link_measurement_io.cpp` | Link measurement (ping/pong) client; `link_measurement.c` is pure TLV build/parse + median/offset math (host-tested), `link_measurement_io.cpp` is the thin WiFiUDP unicast glue — pinger-only, no PingResponder |
 | `midi_clock.*` · `midi_bpm.*` · `midi_bpm_calc.*` | USB-MIDI adapter; `midi_bpm_calc` is the pure, host-tested BPM math (symlinked from `X32MidiClock/`) |
 | `bpm_tracker.*` | change/threshold detection |
 | `osc_out.*` / `osc_sender.*` | OSC packet build / UDP send to the mixer |
