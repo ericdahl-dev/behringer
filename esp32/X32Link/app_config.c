@@ -14,6 +14,7 @@ void config_defaults(AppConfig* cfg) {
     cfg->input_source   = DEFAULT_INPUT_SOURCE;
     cfg->fdr_enable     = DEFAULT_FDR_ENABLE;
     cfg->fdr_chan_count = DEFAULT_FDR_CHAN_COUNT;
+    cfg->quantum_beats  = DEFAULT_QUANTUM_BEATS;
 }
 
 int config_model_port(int model) {
@@ -31,5 +32,6 @@ bool config_validate(const AppConfig* cfg) {
     if (cfg->input_source != 0 && cfg->input_source != 1)  return false;
     if (cfg->fdr_enable   != 0 && cfg->fdr_enable   != 1)  return false;
     if (cfg->fdr_chan_count != 16 && cfg->fdr_chan_count != 32) return false;
+    if (cfg->quantum_beats < 1 || cfg->quantum_beats > 16)        return false;
     return true;
 }

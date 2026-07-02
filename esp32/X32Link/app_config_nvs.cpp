@@ -11,6 +11,7 @@ extern "C" void config_load(AppConfig* cfg) {
     cfg->input_source   = prefs.getInt("input_src", cfg->input_source);
     cfg->fdr_enable     = prefs.getInt("fdr_en",    cfg->fdr_enable);
     cfg->fdr_chan_count = prefs.getInt("fdr_ch",    cfg->fdr_chan_count);
+    cfg->quantum_beats  = prefs.getInt("quantum_beats", cfg->quantum_beats);
     prefs.getString("mixer_ip",  cfg->mixer_ip,  sizeof(cfg->mixer_ip));
     prefs.getString("wifi_ssid", cfg->wifi_ssid, sizeof(cfg->wifi_ssid));
     prefs.getString("wifi_pass", cfg->wifi_pass, sizeof(cfg->wifi_pass));
@@ -24,6 +25,7 @@ extern "C" void config_save(const AppConfig* cfg) {
     prefs.putInt("input_src",  cfg->input_source);
     prefs.putInt("fdr_en",     cfg->fdr_enable);
     prefs.putInt("fdr_ch",     cfg->fdr_chan_count);
+    prefs.putInt("quantum_beats", cfg->quantum_beats);
     prefs.putString("mixer_ip",  cfg->mixer_ip);
     prefs.putString("wifi_ssid", cfg->wifi_ssid);
     prefs.putString("wifi_pass", cfg->wifi_pass);
