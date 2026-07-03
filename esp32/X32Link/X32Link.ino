@@ -8,6 +8,7 @@
 #include "bpm_publisher.h"
 #include "osc_sender.h"
 #include "web_config.h"
+#include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum} read path
 #ifdef HAS_TOUCH_DISPLAY
 #include "touch_display.h"   // LNK-014: 1.47" JD9853 LCD + AXS5106L touch
 #endif
@@ -24,8 +25,9 @@
 
 AppConfig g_config;
 
-static SemaphoreHandle_t g_bpm_mutex;
-volatile float           g_current_bpm = LINK_DEFAULT_BPM;
+// Live tempo now lives behind the tempo_snapshot seam (ARC-001) — the old
+// g_current_bpm / g_current_phase / g_phase_valid globals + g_bpm_mutex are
+// gone; bpm_task publishes a coherent snapshot readers take atomically.
 
 // True once start_config_ap() has parked us in AP fallback (terminal until
 // the user reconfigures via the captive portal — handle_save() reboots).
@@ -156,25 +158,28 @@ static void led_task(void*) {
 
 static void bpm_task(void*) {
     bpm_publisher_init(tempo_source_threshold(), LINK_SEND_INTERVAL_MS, LINK_REFRESH_BARS);
+    float pub_bpm = LINK_DEFAULT_BPM;   // last published BPM (updates on d.send)
     for (;;) {
         tempo_source_poll();
 
-        // Refresh the web status phase snapshot every tick (not gated on
-        // d.send below — phase moves continuously, unlike the
-        // threshold/refresh-gated bpm publish decision).
-        g_phase_valid   = tempo_source_phase_valid();
-        g_current_phase = g_phase_valid ? tempo_source_phase((float)g_config.quantum_beats) : -1.0f;
+        // Phase moves continuously (unlike the threshold/refresh-gated bpm
+        // publish); read it every tick.
+        bool  valid = tempo_source_phase_valid();
+        float phase = valid ? tempo_source_phase((float)g_config.quantum_beats) : -1.0f;
 
         PublishDecision d = bpm_publisher_step(tempo_source_bpm(),
                                                tempo_source_active(),
                                                (uint32_t)millis());
         if (d.send) {
             osc_send_bpm(d.bpm);
-            xSemaphoreTake(g_bpm_mutex, portMAX_DELAY);
-            g_current_bpm = d.bpm;
-            xSemaphoreGive(g_bpm_mutex);
+            pub_bpm = d.bpm;
             Serial.printf("[X32Sync] BPM %.2f → OSC sent%s\n", d.bpm, d.refresh ? " (refresh)" : "");
         }
+
+        // One coherent snapshot per tick (ARC-001) — replaces the 3 globals +
+        // mutex; readers take an atomic, torn-free {bpm,phase,valid,quantum}.
+        tempo_snapshot_publish(pub_bpm, phase, valid, g_config.quantum_beats);
+
         vTaskDelay(pdMS_TO_TICKS(tempo_source_poll_ms()));
     }
 }
@@ -272,7 +277,6 @@ void setup() {
     // needs no network at all) must not depend on WiFi succeeding.
     // tempo_source_begin() (Link's multicast join) happens after, only on
     // the STA-connected path — see the wifi_ok branch below.
-    g_bpm_mutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(bpm_task, "bpm", 4096, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(led_task, "led", 2048, NULL, 1, NULL, 0);
 
@@ -310,11 +314,12 @@ void loop() {
     uint32_t now = millis();
     if (now - last_log >= 5000) {
         last_log = now;
+        TempoSnapshot ts; tempo_snapshot_read(&ts);
         Serial.printf("[X32Link] ip:%s mcast:%d rx:%lu peers:%d bpm:%.2f heap:%lu\n",
                       WiFi.localIP().toString().c_str(),
                       link_listener_mcast_ok() ? 1 : 0,
                       (unsigned long)link_listener_rx_count(),
-                      link_listener_peers(), g_current_bpm,
+                      link_listener_peers(), ts.bpm,
                       (unsigned long)ESP.getFreeHeap());
     }
     delay(20);
