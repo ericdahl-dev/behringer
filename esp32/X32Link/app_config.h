@@ -18,6 +18,7 @@ typedef struct {
     int  fdr_enable;    // X32FaderDisp: 0 = off, 1 = write dB to scribble names
     int  fdr_chan_count;// X32FaderDisp: 16 (XR18) or 32 (X32)
     int  quantum_beats; // bar-quantized phase: beats per bar, 1-16 (LNK-019)
+    int  midi_clock_out_enable; // LNK-027: 0/1 — emit 24-PPQN USB-MIDI clock while following Link
 } AppConfig;
 
 void config_defaults(AppConfig* cfg);
