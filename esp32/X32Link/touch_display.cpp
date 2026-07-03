@@ -1,3 +1,4 @@
+#include "config.h"        // LNK-025: board->HAS_TOUCH_DISPLAY derivation; must precede the guard
 #include "touch_display.h"
 
 // Whole module compiles only for the touch-LCD board — keeps LovyanGFX out of
