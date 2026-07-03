@@ -18,6 +18,7 @@ PUB     = ../X32Link/bpm_publisher.c
 OSCIN   = ../X32Link/osc_in.c
 FADERDB = ../X32FaderDisp/fader_db.c
 STATUSJSON = ../X32Link/web_status_json.c
+AXS     = ../X32Link/axs5106l.c
 
 .PHONY: all clean
 
@@ -76,5 +77,8 @@ test_fader_db: test_fader_db.c $(FADERDB) $(UNITY)
 test_web_status_json: test_web_status_json.c $(STATUSJSON) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@
 
+test_axs5106l: test_axs5106l.c $(AXS) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@
+
 clean:
-	rm -f test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json
+	rm -f test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_axs5106l
