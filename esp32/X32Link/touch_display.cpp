@@ -10,6 +10,11 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include "axs5106l.h"
+#include "touch_ui.h"        // LNK-015: pure UI logic (hit-test, formatting, taps)
+
+// Shared globals maintained by X32Link.ino — same pattern web_config.cpp uses.
+extern AppConfig      g_config;
+extern volatile float g_current_bpm;
 
 // ---- Panel (validated on glass, LNK-014 Progress) --------------------------
 // JD9853 via LovyanGFX Panel_ST7789. Pins: SCK38 MOSI39 DC45 CS21 RST40, BL46.
@@ -60,6 +65,39 @@ static void draw_splash(void) {
     s_lcd.setCursor(8, 130); s_lcd.println("booting...");
 }
 
+// LNK-015 screen state (settings/keyboard screens land in later tasks).
+enum ui_screen_t { SCREEN_STATUS, SCREEN_SETTINGS, SCREEN_KEYBOARD };
+static ui_screen_t s_screen = SCREEN_STATUS;
+
+// LNK-015 Task 7: status screen, static layout (live refresh is Task 8).
+// Portrait 172x320 (setRotation(4)). Mirrors web_config.cpp's .scr panel.
+static void draw_status(void) {
+    s_lcd.fillScreen(TFT_BLACK);
+
+    char bpm[8];
+    ui_bpm_str(bpm, sizeof bpm, g_current_bpm);
+    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    s_lcd.setTextSize(4);
+    s_lcd.setCursor(8, 44);
+    s_lcd.print(bpm);
+    s_lcd.setTextColor(TFT_DARKGREEN, TFT_BLACK);
+    s_lcd.setTextSize(1);
+    s_lcd.setCursor(8, 84);
+    s_lcd.print("BPM");
+
+    s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    s_lcd.setTextSize(2);
+    s_lcd.setCursor(8, 128);
+    s_lcd.print(g_config.input_source == 0 ? "Ableton Link" : "USB MIDI");
+
+    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    s_lcd.setTextSize(1);
+    s_lcd.setCursor(8, 168);
+    s_lcd.printf("/fx/%d/par/01", g_config.fx_slot);
+    s_lcd.setCursor(8, 184);
+    s_lcd.print(g_config.mixer_ip);
+}
+
 static bool axs_read(axs_touch_t *t) {
     Wire.beginTransmission(AXS5106L_I2C_ADDR);
     Wire.write(AXS5106L_TOUCH_REG);
@@ -84,6 +122,8 @@ void touch_display_begin(void) {
     Wire.begin(TP_SDA, TP_SCL);
     Wire.setClock(400000);
     Serial.printf("[X32Link] touch_display up (%dx%d)\n", (int)s_lcd.width(), (int)s_lcd.height());
+
+    draw_status();             // LNK-015 Task 7: show the status screen (BPM --.- until tempo)
 }
 
 void touch_display_tick(void) {
