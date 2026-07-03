@@ -24,3 +24,14 @@
 #define DEFAULT_FDR_ENABLE     0    // FaderDisp off on non-FDR firmware
 #define DEFAULT_FDR_CHAN_COUNT 32
 #define DEFAULT_QUANTUM_BEATS  4    // bar-quantized phase: beats per bar
+
+// Board profile (LNK-025) — the Waveshare ESP32-S3-Touch-LCD-1.47 carries the
+// 1.47" LCD, so its single board flag implies the on-device display UI: one
+// -DBOARD_WAVESHARE_S3_TOUCH_LCD_147 yields the full LNK-014/015 touch build
+// instead of two flags (BOARD_* + HAS_TOUCH_DISPLAY) hand-kept in sync. This
+// MUST live in a shared header every relevant translation unit includes —
+// deriving it inside X32Link.ino alone leaves touch_display.cpp (a separate TU)
+// unaware, compiling its body out and undefined-ref'ing touch_display_begin().
+#if defined(BOARD_WAVESHARE_S3_TOUCH_LCD_147) && !defined(HAS_TOUCH_DISPLAY)
+#define HAS_TOUCH_DISPLAY
+#endif

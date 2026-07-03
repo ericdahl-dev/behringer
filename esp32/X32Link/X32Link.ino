@@ -9,7 +9,7 @@
 #include "osc_sender.h"
 #include "web_config.h"
 #include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum} read path
-#ifdef HAS_TOUCH_DISPLAY
+#ifdef HAS_TOUCH_DISPLAY     // LNK-025: implied by the board flag in config.h (included above)
 #include "touch_display.h"   // LNK-014: 1.47" JD9853 LCD + AXS5106L touch
 #endif
 
@@ -47,9 +47,10 @@ static bool s_ap_mode = false;
 // charger-driven charge-status LED and an always-on power LED, neither under
 // MCU control (verified against the Waveshare schematic GPIO map). GPIO38 there
 // is LCD_SCL, not an LED — driving it as a beat LED silently toggles the display
-// clock, so don't. This board runs headless (LED_NONE): the beat is shown by the
-// web /status beat dot (LNK-022), and the 1.47" LCD (backlight on GPIO46) is left
-// untouched for a real display UI later rather than hijacked as a strobe.
+// clock, so don't. There is no discrete MCU beat LED (LED_NONE): the board flag
+// implies HAS_TOUCH_DISPLAY (see above), so the beat shows on-screen (LNK-015
+// phase wheel) and via the web /status dot (LNK-022); GPIO46 is the LCD backlight
+// owned by the display, not a strobe.
 #if defined(BOARD_QTPY_ESP32S3)
     #define LED_RGB
     #define LED_PIN_NUM 39
