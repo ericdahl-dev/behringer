@@ -7,14 +7,19 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>            // WiFi.localIP() for the on-screen config address
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include "axs5106l.h"
 #include "touch_ui.h"        // LNK-015: pure UI logic (hit-test, formatting, taps)
+#include "tempo_source.h"    // tempo_source_active() (side-effect-free read)
 
 // Shared globals maintained by X32Link.ino — same pattern web_config.cpp uses.
+// (Do NOT call tempo_source_beat() here — it self-clears and led_task owns it.)
 extern AppConfig      g_config;
 extern volatile float g_current_bpm;
+extern volatile float g_current_phase;   // -1.0f when no valid phase
+extern volatile bool  g_phase_valid;
 
 // ---- Panel (validated on glass, LNK-014 Progress) --------------------------
 // JD9853 via LovyanGFX Panel_ST7789. Pins: SCK38 MOSI39 DC45 CS21 RST40, BL46.
@@ -69,17 +74,23 @@ static void draw_splash(void) {
 enum ui_screen_t { SCREEN_STATUS, SCREEN_SETTINGS, SCREEN_KEYBOARD };
 static ui_screen_t s_screen = SCREEN_STATUS;
 
-// LNK-015 Task 7: status screen, static layout (live refresh is Task 8).
-// Portrait 172x320 (setRotation(4)). Mirrors web_config.cpp's .scr panel.
+// Status-screen phase wheel geometry (portrait 172x320, setRotation(4)).
+#define WHEEL_CX 86
+#define WHEEL_CY 252
+#define WHEEL_R  44
+
+// touch_display_update() repaint caches (reset by draw_status()).
+static char     s_bpm_shown[8] = "";
+static char     s_ip_shown[16] = "";
+static int      s_prev_mx = -1, s_prev_my = -1;
+static bool     s_wheel_valid_shown = false;
+static uint32_t s_last_update_ms = 0;
+
+// LNK-015 Task 7/8: status screen. draw_status() paints the static frame;
+// touch_display_update() (Task 8) refreshes the live BPM number + phase wheel.
 static void draw_status(void) {
     s_lcd.fillScreen(TFT_BLACK);
 
-    char bpm[8];
-    ui_bpm_str(bpm, sizeof bpm, g_current_bpm);
-    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-    s_lcd.setTextSize(4);
-    s_lcd.setCursor(8, 44);
-    s_lcd.print(bpm);
     s_lcd.setTextColor(TFT_DARKGREEN, TFT_BLACK);
     s_lcd.setTextSize(1);
     s_lcd.setCursor(8, 84);
@@ -90,12 +101,83 @@ static void draw_status(void) {
     s_lcd.setCursor(8, 128);
     s_lcd.print(g_config.input_source == 0 ? "Ableton Link" : "USB MIDI");
 
+    // OSC target (the mixer we send to). Device's own IP is drawn live by
+    // touch_display_update() (below) since WiFi isn't up yet at begin() time.
     s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
     s_lcd.setTextSize(1);
-    s_lcd.setCursor(8, 168);
-    s_lcd.printf("/fx/%d/par/01", g_config.fx_slot);
-    s_lcd.setCursor(8, 184);
-    s_lcd.print(g_config.mixer_ip);
+    s_lcd.setCursor(8, 178);
+    s_lcd.printf("osc %s /fx%d", g_config.mixer_ip, g_config.fx_slot);
+
+    s_lcd.drawCircle(WHEEL_CX, WHEEL_CY, WHEEL_R, TFT_DARKGREEN);
+
+    // force touch_display_update() to repaint the dynamic parts next tick
+    s_bpm_shown[0] = '\0';
+    s_ip_shown[0]  = '\0';
+    s_prev_mx = -1;
+    s_wheel_valid_shown = false;
+}
+
+void touch_display_update(void) {
+    if (s_screen != SCREEN_STATUS) return;
+    uint32_t now = millis();
+    if (now - s_last_update_ms < 100) return;   // ~10 Hz is plenty for status
+    s_last_update_ms = now;
+
+    bool active = tempo_source_active();
+
+    // BPM number — repaint only when the shown text changes (no flicker).
+    char bpm[8];
+    if (active) ui_bpm_str(bpm, sizeof bpm, g_current_bpm);
+    else        snprintf(bpm, sizeof bpm, "--.-");   // no live signal
+    if (strcmp(bpm, s_bpm_shown) != 0) {
+        s_lcd.fillRect(8, 44, 160, 34, TFT_BLACK);
+        s_lcd.setTextColor(active ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
+        s_lcd.setTextSize(4);
+        s_lcd.setCursor(8, 44);
+        s_lcd.print(bpm);
+        strncpy(s_bpm_shown, bpm, sizeof s_bpm_shown - 1);
+        s_bpm_shown[sizeof s_bpm_shown - 1] = '\0';
+    }
+
+    // Device IP (where to browse for config) — reads 0.0.0.0 until WiFi is up.
+    IPAddress ip = WiFi.localIP();
+    char ipstr[16];
+    snprintf(ipstr, sizeof ipstr, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+    if (strcmp(ipstr, s_ip_shown) != 0) {
+        s_lcd.fillRect(8, 158, 160, 12, TFT_BLACK);
+        s_lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+        s_lcd.setTextSize(1);
+        s_lcd.setCursor(8, 158);
+        s_lcd.printf("web %s", ipstr);
+        strncpy(s_ip_shown, ipstr, sizeof s_ip_shown - 1);
+        s_ip_shown[sizeof s_ip_shown - 1] = '\0';
+    }
+
+    // Phase wheel: sweeping marker once phase is valid, else "syncing".
+    bool valid = g_phase_valid && g_current_phase >= 0.0f;
+    if (valid != s_wheel_valid_shown) {            // state change: clear interior
+        s_lcd.fillCircle(WHEEL_CX, WHEEL_CY, WHEEL_R - 1, TFT_BLACK);
+        s_lcd.drawCircle(WHEEL_CX, WHEEL_CY, WHEEL_R, TFT_DARKGREEN);
+        s_prev_mx = -1;
+        s_wheel_valid_shown = valid;
+    }
+    if (valid) {
+        float ang = ui_phase_angle(g_current_phase, (float)g_config.quantum_beats);
+        float rad = (ang - 90.0f) * 0.01745329f;   // deg->rad; 0deg at top
+        int mx = WHEEL_CX + (int)(cosf(rad) * (WHEEL_R - 8));
+        int my = WHEEL_CY + (int)(sinf(rad) * (WHEEL_R - 8));
+        if (mx != s_prev_mx || my != s_prev_my) {
+            if (s_prev_mx >= 0) s_lcd.fillCircle(s_prev_mx, s_prev_my, 7, TFT_BLACK);
+            s_lcd.drawCircle(WHEEL_CX, WHEEL_CY, WHEEL_R, TFT_DARKGREEN);  // repair outline
+            s_lcd.fillCircle(mx, my, 6, TFT_GREEN);
+            s_prev_mx = mx; s_prev_my = my;
+        }
+    } else {
+        s_lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+        s_lcd.setTextSize(1);
+        s_lcd.setCursor(WHEEL_CX - 21, WHEEL_CY - 3);
+        s_lcd.print("syncing");
+    }
 }
 
 static bool axs_read(axs_touch_t *t) {
