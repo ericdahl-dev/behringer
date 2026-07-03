@@ -291,6 +291,7 @@ void setup() {
 void loop() {
 #ifdef HAS_TOUCH_DISPLAY
     touch_display_tick();    // LNK-014: poll AXS5106L, echo coords to LCD + Serial
+    touch_display_update();  // LNK-015: refresh status screen live fields (BPM, phase wheel)
 #endif
     // Gated on !s_ap_mode (LNK-023): once parked in AP fallback, WiFi.status()
     // is never WL_CONNECTED (we're in WIFI_AP mode, not WIFI_STA) — without
