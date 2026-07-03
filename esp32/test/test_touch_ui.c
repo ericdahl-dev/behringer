@@ -27,9 +27,20 @@ void test_ui_bpm_str(void) {
     ui_bpm_str(b, sizeof b, 60.0f);  TEST_ASSERT_EQUAL_STRING("60.0", b);
 }
 
+// Task 3: ui_phase_angle — maps 0..quantum to 0..360; wraps; 0 if quantum <= 0.
+void test_ui_phase_angle(void) {
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f,   ui_phase_angle(0.0f, 4.0f));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 180.0f, ui_phase_angle(2.0f, 4.0f));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f,   ui_phase_angle(4.0f, 4.0f));  // wrap
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f,   ui_phase_angle(1.0f, 0.0f));  // bad
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 90.0f,  ui_phase_angle(5.0f, 4.0f));  // wrap>1
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 270.0f, ui_phase_angle(3.0f, 4.0f));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_hit);
     RUN_TEST(test_ui_bpm_str);
+    RUN_TEST(test_ui_phase_angle);
     return UNITY_END();
 }
