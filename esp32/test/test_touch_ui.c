@@ -37,10 +37,52 @@ void test_ui_phase_angle(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 270.0f, ui_phase_angle(3.0f, 4.0f));
 }
 
+// Task 4: ui_apply_settings_tap — mutate config per tapped field.
+void test_ui_apply_settings_tap(void) {
+    AppConfig c;
+    // Model change keeps fx_slot when still in range.
+    config_defaults(&c); c.model = MODEL_XR18; c.fx_slot = 4;
+    ui_apply_settings_tap(&c, UI_F_MODEL_X32);
+    TEST_ASSERT_EQUAL_INT(MODEL_X32, c.model);
+    TEST_ASSERT_EQUAL_INT(4, c.fx_slot);
+    // Model change clamps fx_slot to new max.
+    config_defaults(&c); c.model = MODEL_X32; c.fx_slot = 7;
+    ui_apply_settings_tap(&c, UI_F_MODEL_XR);
+    TEST_ASSERT_EQUAL_INT(MODEL_XR18, c.model);
+    TEST_ASSERT_EQUAL_INT(4, c.fx_slot);   // clamp
+    // Source toggle.
+    config_defaults(&c); c.input_source = 0;
+    ui_apply_settings_tap(&c, UI_F_SRC_MIDI);
+    TEST_ASSERT_EQUAL_INT(1, c.input_source);
+    ui_apply_settings_tap(&c, UI_F_SRC_LINK);
+    TEST_ASSERT_EQUAL_INT(0, c.input_source);
+    // Quantum inc/dec clamped 1..16.
+    config_defaults(&c); c.quantum_beats = 16;
+    ui_apply_settings_tap(&c, UI_F_QUANTUM_INC);
+    TEST_ASSERT_EQUAL_INT(16, c.quantum_beats);
+    c.quantum_beats = 1;
+    ui_apply_settings_tap(&c, UI_F_QUANTUM_DEC);
+    TEST_ASSERT_EQUAL_INT(1, c.quantum_beats);
+    c.quantum_beats = 4;
+    ui_apply_settings_tap(&c, UI_F_QUANTUM_INC);
+    TEST_ASSERT_EQUAL_INT(5, c.quantum_beats);
+    ui_apply_settings_tap(&c, UI_F_QUANTUM_DEC);
+    TEST_ASSERT_EQUAL_INT(4, c.quantum_beats);
+    // Slot pick within range.
+    config_defaults(&c); c.model = MODEL_X32;
+    ui_apply_settings_tap(&c, UI_F_SLOT_1 + 5);
+    TEST_ASSERT_EQUAL_INT(6, c.fx_slot);
+    // Slot pick out of range for model is ignored.
+    config_defaults(&c); c.model = MODEL_XR18; c.fx_slot = 2;
+    ui_apply_settings_tap(&c, UI_F_SLOT_1 + 5);   // slot 6 > XR18 max 4
+    TEST_ASSERT_EQUAL_INT(2, c.fx_slot);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_hit);
     RUN_TEST(test_ui_bpm_str);
     RUN_TEST(test_ui_phase_angle);
+    RUN_TEST(test_ui_apply_settings_tap);
     return UNITY_END();
 }

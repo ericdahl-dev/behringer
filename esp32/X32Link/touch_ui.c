@@ -29,3 +29,36 @@ float ui_phase_angle(float phase, float quantum) {
     if (frac < 0.0f) frac += quantum;
     return frac / quantum * 360.0f;
 }
+
+void ui_apply_settings_tap(AppConfig *cfg, int field_id) {
+    if (!cfg) return;
+    switch (field_id) {
+        case UI_F_SRC_LINK:
+            cfg->input_source = 0;
+            break;
+        case UI_F_SRC_MIDI:
+            cfg->input_source = 1;
+            break;
+        case UI_F_MODEL_XR:
+        case UI_F_MODEL_X32: {
+            cfg->model = (field_id == UI_F_MODEL_X32) ? MODEL_X32 : MODEL_XR18;
+            int max = config_model_slot_max(cfg->model);
+            if (cfg->fx_slot > max) cfg->fx_slot = max;
+            break;
+        }
+        case UI_F_QUANTUM_INC:
+            if (cfg->quantum_beats < 16) cfg->quantum_beats++;
+            break;
+        case UI_F_QUANTUM_DEC:
+            if (cfg->quantum_beats > 1) cfg->quantum_beats--;
+            break;
+        default:
+            if (field_id >= UI_F_SLOT_1 && field_id <= UI_F_SLOT_8) {
+                int slot = field_id - UI_F_SLOT_1 + 1;
+                if (slot <= config_model_slot_max(cfg->model)) {
+                    cfg->fx_slot = slot;
+                }
+            }
+            break;
+    }
+}
