@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "touch_ui.h"
+#include <string.h>
 
 void setUp(void)    {}
 void tearDown(void) {}
@@ -94,6 +95,25 @@ void test_ui_kbd_apply(void) {
     TEST_ASSERT_EQUAL_STRING("ab", f);
 }
 
+// Task 6: ui_ip_apply — only accept [0-9.] and '\b'.
+void test_ui_ip_apply(void) {
+    char ip[16] = "";
+    ui_ip_apply(ip, sizeof ip, '1');
+    ui_ip_apply(ip, sizeof ip, '9');
+    ui_ip_apply(ip, sizeof ip, '2');
+    ui_ip_apply(ip, sizeof ip, '.');
+    TEST_ASSERT_EQUAL_STRING("192.", ip);
+    ui_ip_apply(ip, sizeof ip, 'x');       // non-ip char ignored
+    TEST_ASSERT_EQUAL_STRING("192.", ip);
+    ui_ip_apply(ip, sizeof ip, '\b');      // backspace still works
+    TEST_ASSERT_EQUAL_STRING("192", ip);
+    // A valid mixer_ip built this way passes the existing validator.
+    AppConfig c;
+    config_defaults(&c);
+    strcpy(c.mixer_ip, "192.168.0.10");
+    TEST_ASSERT_TRUE(config_validate(&c));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_hit);
@@ -101,5 +121,6 @@ int main(void) {
     RUN_TEST(test_ui_phase_angle);
     RUN_TEST(test_ui_apply_settings_tap);
     RUN_TEST(test_ui_kbd_apply);
+    RUN_TEST(test_ui_ip_apply);
     return UNITY_END();
 }

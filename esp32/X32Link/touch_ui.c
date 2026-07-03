@@ -47,8 +47,14 @@ static void ui_buf_apply(char *buf, size_t cap, char key, int (*accept)(char)) {
 
 static int accept_printable(char c) { return c >= 0x20 && c < 0x7f; }
 
+static int accept_ip_char(char c) { return (c >= '0' && c <= '9') || c == '.'; }
+
 void ui_kbd_apply(char *buf, size_t cap, char key) {
     ui_buf_apply(buf, cap, key, accept_printable);
+}
+
+void ui_ip_apply(char *buf, size_t cap, char key) {
+    ui_buf_apply(buf, cap, key, accept_ip_char);
 }
 
 void ui_apply_settings_tap(AppConfig *cfg, int field_id) {
