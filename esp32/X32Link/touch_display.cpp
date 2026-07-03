@@ -86,6 +86,10 @@ static int      s_prev_mx = -1, s_prev_my = -1;
 static bool     s_wheel_valid_shown = false;
 static uint32_t s_last_update_ms = 0;
 
+// Tap targets (screen coords after the rotation-4 map). Task 9: nav only.
+static const ui_rect_t STATUS_SET_RECT   = {116, 4, 52, 28};   // "SET" on status
+static const ui_rect_t SETTINGS_BACK_RECT = {8, 280, 90, 34};  // "< back" on settings
+
 // LNK-015 Task 7/8: status screen. draw_status() paints the static frame;
 // touch_display_update() (Task 8) refreshes the live BPM number + phase wheel.
 static void draw_status(void) {
@@ -110,11 +114,36 @@ static void draw_status(void) {
 
     s_lcd.drawCircle(WHEEL_CX, WHEEL_CY, WHEEL_R, TFT_DARKGREEN);
 
+    // "SET" button (top-right) opens the settings screen (Task 9 nav).
+    s_lcd.drawRoundRect(STATUS_SET_RECT.x, STATUS_SET_RECT.y,
+                        STATUS_SET_RECT.w, STATUS_SET_RECT.h, 4, TFT_DARKGREY);
+    s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    s_lcd.setTextSize(1);
+    s_lcd.setCursor(STATUS_SET_RECT.x + 14, STATUS_SET_RECT.y + 10);
+    s_lcd.print("SET");
+
     // force touch_display_update() to repaint the dynamic parts next tick
     s_bpm_shown[0] = '\0';
     s_ip_shown[0]  = '\0';
     s_prev_mx = -1;
     s_wheel_valid_shown = false;
+}
+
+// Task 9: minimal settings screen (real fields land in Task 10). Just a title
+// and a back button so touch navigation is verifiable now.
+static void draw_settings(void) {
+    s_lcd.fillScreen(TFT_BLACK);
+    s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    s_lcd.setTextSize(2);
+    s_lcd.setCursor(8, 10);
+    s_lcd.print("SETTINGS");
+
+    s_lcd.drawRoundRect(SETTINGS_BACK_RECT.x, SETTINGS_BACK_RECT.y,
+                        SETTINGS_BACK_RECT.w, SETTINGS_BACK_RECT.h, 5, TFT_GREEN);
+    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    s_lcd.setTextSize(2);
+    s_lcd.setCursor(SETTINGS_BACK_RECT.x + 12, SETTINGS_BACK_RECT.y + 9);
+    s_lcd.print("< back");
 }
 
 void touch_display_update(void) {
@@ -209,18 +238,33 @@ void touch_display_begin(void) {
 }
 
 void touch_display_tick(void) {
-    // LNK-014 scope: poll the controller and echo raw coordinates to Serial on
-    // contact. No on-screen touch UI here — drawing touch state on the panel
-    // (and the raw->screen coordinate mapping, e.g. the Y flip) is LNK-015's
-    // job. The static boot splash stays on screen.
-    uint32_t now = millis();
-    if (now - s_last_print_ms < 150) return;
-    s_last_print_ms = now;
+    // Poll the AXS5106L and dispatch taps. Coordinates are mapped to screen
+    // space with LNK-014's rotation-4 transform (X direct, Y inverted). One tap
+    // per press: act on the touch-down edge, rearm on release.
+    static bool s_touch_down = false;
 
     axs_touch_t t;
-    if (!axs_read(&t)) return;                 // I2C gap / no data: stay quiet
-    if (t.points_len)
-        Serial.printf("[td] n=%u x=%d y=%d\n", t.count, t.points[0].x, t.points[0].y);
+    if (!axs_read(&t)) return;                 // I2C gap: keep prior state
+    bool touched = t.points_len > 0;
+
+    if (touched && !s_touch_down) {
+        s_touch_down = true;
+        int x = t.points[0].x;                 // rotation-4: X maps direct,
+        int y = 319 - t.points[0].y;           //             Y is inverted
+        if (s_screen == SCREEN_STATUS) {
+            if (ui_hit(&STATUS_SET_RECT, 1, x, y) >= 0) {
+                s_screen = SCREEN_SETTINGS;
+                draw_settings();
+            }
+        } else if (s_screen == SCREEN_SETTINGS) {
+            if (ui_hit(&SETTINGS_BACK_RECT, 1, x, y) >= 0) {
+                s_screen = SCREEN_STATUS;
+                draw_status();
+            }
+        }
+    } else if (!touched) {
+        s_touch_down = false;
+    }
 }
 
 #endif // HAS_TOUCH_DISPLAY
