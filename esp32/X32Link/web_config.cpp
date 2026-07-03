@@ -242,20 +242,6 @@ static void handle_status() {
     server.send(200, "application/json", buf);
 }
 
-// LNK-026 diagnostic (temporary). X32Link provides phasedbg_json() with the raw
-// Link phase inputs (beatOrigin/timeOrigin/intercept); X32MidiClock leaves this
-// weak-undefined (it has no Link sources), so the endpoint reports false there.
-extern "C" int phasedbg_json(char* buf, int cap) __attribute__((weak));
-static void handle_phasedbg() {
-    if (phasedbg_json) {
-        char buf[320];
-        phasedbg_json(buf, sizeof(buf));
-        server.send(200, "application/json", buf);
-    } else {
-        server.send(200, "application/json", "{\"phasedbg\":false}");
-    }
-}
-
 // Minimal dark result page matching the panel aesthetic.
 static void send_result(int code, const char* title, const char* body) {
     String p =
@@ -326,7 +312,6 @@ static void handle_captive_redirect() {
 void web_config_begin() {
     server.on("/",       HTTP_GET,  handle_root);
     server.on("/status", HTTP_GET,  handle_status);
-    server.on("/phasedbg", HTTP_GET, handle_phasedbg);  // LNK-026 diagnostic (temporary)
     server.on("/save",   HTTP_POST, handle_save);
     server.begin();
 }
@@ -340,7 +325,6 @@ void web_config_ap_begin() {
 
     server.on("/",       HTTP_GET,  handle_root);
     server.on("/status", HTTP_GET,  handle_status);
-    server.on("/phasedbg", HTTP_GET, handle_phasedbg);  // LNK-026 diagnostic (temporary)
     server.on("/save",   HTTP_POST, handle_save);
 
     // OS captive-portal detection endpoints → redirect to config page.

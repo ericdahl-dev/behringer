@@ -242,6 +242,29 @@ void test_add_pong_samples_round2_pushes_sample_a_and_b(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 50.0f, (float)m);
 }
 
+void test_add_pong_samples_rejects_stale_rtt(void) {
+    // LNK-026 bug 2: a pong left in the RX buffer across the ~2s idle gap
+    // between attempts echoes a host_time ~2s old. rtt = h_recv - host_time
+    // then blows past any LAN bound; committing it underestimates the
+    // GhostXForm by ~rtt/2 (~1s ~= 2 beats). Reject such samples outright.
+    LinkPongFields f = {0};
+    f.has_ghost_time = true; f.ghost_time_us = 500;
+    f.has_host_time  = true; f.host_time_us  = 200;
+    // h_recv 2_000_200 -> rtt = 2_000_000 us (2 s), way over the bound.
+    TEST_ASSERT_EQUAL_INT(0, link_measurement_add_pong_samples(2000200, &f));
+    TEST_ASSERT_EQUAL_INT(0, link_measurement_samples_count());
+}
+
+void test_add_pong_samples_rejects_negative_rtt(void) {
+    // h_recv earlier than the echoed host_time is impossible on one clock;
+    // treat it as a stale/mismatched pong and drop it.
+    LinkPongFields f = {0};
+    f.has_ghost_time = true; f.ghost_time_us = 500;
+    f.has_host_time  = true; f.host_time_us  = 1000;
+    TEST_ASSERT_EQUAL_INT(0, link_measurement_add_pong_samples(200, &f));
+    TEST_ASSERT_EQUAL_INT(0, link_measurement_samples_count());
+}
+
 void test_add_pong_samples_skips_when_ghost_time_missing(void) {
     LinkPongFields f = {0};
     f.has_host_time = true; f.host_time_us = 200;
@@ -419,6 +442,8 @@ int main(void) {
 
     RUN_TEST(test_add_pong_samples_round1_pushes_sample_a_only);
     RUN_TEST(test_add_pong_samples_round2_pushes_sample_a_and_b);
+    RUN_TEST(test_add_pong_samples_rejects_stale_rtt);
+    RUN_TEST(test_add_pong_samples_rejects_negative_rtt);
     RUN_TEST(test_add_pong_samples_skips_when_ghost_time_missing);
     RUN_TEST(test_add_pong_samples_skips_when_host_time_missing);
     RUN_TEST(test_median_false_when_no_samples);
