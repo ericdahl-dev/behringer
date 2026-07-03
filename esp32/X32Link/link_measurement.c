@@ -157,6 +157,13 @@ static void push_sample(double v) {
 int link_measurement_add_pong_samples(int64_t h_recv, const LinkPongFields* pong) {
     if (!pong || !pong->has_ghost_time || !pong->has_host_time) return 0;
 
+    // LNK-026 bug 2: drop a pong whose round trip is negative or implausibly
+    // large — it's a stale/mismatched reply (e.g. left in the RX buffer across
+    // the idle gap between attempts), and its ~2s-old echoed host_time would
+    // poison the median by ~1s (~2 beats). See LINK_MEASUREMENT_MAX_RTT_US.
+    int64_t rtt = h_recv - pong->host_time_us;
+    if (rtt < 0 || rtt > LINK_MEASUREMENT_MAX_RTT_US) return 0;
+
     int added = 0;
     double g      = (double)pong->ghost_time_us;
     double h_sent = (double)pong->host_time_us;
