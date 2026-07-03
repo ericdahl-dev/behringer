@@ -8,6 +8,9 @@
 #include "bpm_publisher.h"
 #include "osc_sender.h"
 #include "web_config.h"
+#ifdef HAS_TOUCH_DISPLAY
+#include "touch_display.h"   // LNK-014: 1.47" JD9853 LCD + AXS5106L touch
+#endif
 
 #define LED_FLASH_MS 30
 
@@ -260,6 +263,10 @@ void setup() {
     tempo_source_select(g_config.input_source);
     tempo_source_pre_net();  // USB MIDI enumerates here (before WiFi); no-op for Link
 
+#ifdef HAS_TOUCH_DISPLAY
+    touch_display_begin();   // splash up early, before the (up-to-30s) WiFi connect
+#endif
+
     // LNK-023: bpm_task/led_task created unconditionally, before WiFi is
     // even attempted — tempo/LED processing (incl. USB MIDI clock, which
     // needs no network at all) must not depend on WiFi succeeding.
@@ -282,6 +289,9 @@ void setup() {
 }
 
 void loop() {
+#ifdef HAS_TOUCH_DISPLAY
+    touch_display_tick();    // LNK-014: poll AXS5106L, echo coords to LCD + Serial
+#endif
     // Gated on !s_ap_mode (LNK-023): once parked in AP fallback, WiFi.status()
     // is never WL_CONNECTED (we're in WIFI_AP mode, not WIFI_STA) — without
     // this gate this block would call wifi_connect() (STA reconnect) every
