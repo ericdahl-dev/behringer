@@ -15,6 +15,7 @@ void config_defaults(AppConfig* cfg) {
     cfg->fdr_enable     = DEFAULT_FDR_ENABLE;
     cfg->fdr_chan_count = DEFAULT_FDR_CHAN_COUNT;
     cfg->quantum_beats  = DEFAULT_QUANTUM_BEATS;
+    cfg->midi_clock_out_enable = DEFAULT_MIDI_CLOCK_OUT_ENABLE;
 }
 
 int config_model_port(int model) {
@@ -33,5 +34,6 @@ bool config_validate(const AppConfig* cfg) {
     if (cfg->fdr_enable   != 0 && cfg->fdr_enable   != 1)  return false;
     if (cfg->fdr_chan_count != 16 && cfg->fdr_chan_count != 32) return false;
     if (cfg->quantum_beats < 1 || cfg->quantum_beats > 16)        return false;
+    if (cfg->midi_clock_out_enable != 0 && cfg->midi_clock_out_enable != 1) return false;
     return true;
 }

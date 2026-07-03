@@ -11,6 +11,7 @@
 #include "midi_clock.h"
 #include "midi_bpm.h"
 #include "midi_bpm_calc.h"
+#include "midi_clock_out_io.h"  // LNK-027: Link -> USB-MIDI clock OUT
 #include "app_config.h"
 #include <USB.h>
 #include <Arduino.h>
@@ -28,13 +29,19 @@ extern "C" void tempo_source_select(int kind) {
     s_kind = (kind == TEMPO_SRC_MIDI) ? TEMPO_SRC_MIDI : TEMPO_SRC_LINK;
 }
 
-// USB MIDI must enumerate BEFORE WiFi. Link has nothing to do here.
+// USB MIDI must enumerate BEFORE WiFi. In Link mode we normally have nothing to
+// do here — but if MIDI clock OUT is enabled (LNK-027) we still need the USB MIDI
+// device enumerated pre-WiFi so the host sees it, same ordering as the MIDI-in path.
 extern "C" void tempo_source_pre_net(void) {
     if (s_kind == TEMPO_SRC_MIDI) {
         USB.manufacturerName("X32Sync");
         midi_clock_init();   // MidiUSB.begin() + spawns the poll task
         USB.begin();
         midi_bpm_init();
+    } else if (s_kind == TEMPO_SRC_LINK && g_config.midi_clock_out_enable) {
+        USB.manufacturerName("X32Sync");
+        midi_clock_usb_begin();  // MidiUSB.begin() only — no IN poll task in Link mode
+        USB.begin();
     }
 }
 
@@ -46,6 +53,7 @@ extern "C" void tempo_source_begin(void) {
     if (s_kind == TEMPO_SRC_LINK) {
         link_listener_begin();
         link_measurement_io_begin();
+        if (g_config.midi_clock_out_enable) midi_clock_out_io_begin();  // LNK-027
     }
 }
 
@@ -98,6 +106,23 @@ extern "C" float tempo_source_phase(float quantum) {
     }
 
     return midi_phase_calc(midi_clock_pulse_count(), (int)quantum);
+}
+
+// Monotonic absolute beats (non-wrapping) — the clock generator's tick basis.
+// Same math as tempo_source_phase() but without the fmod(quantum). See header.
+extern "C" double tempo_source_beats_now(void) {
+    if (!tempo_source_phase_valid()) return -1.0;
+
+    if (s_kind == TEMPO_SRC_LINK) {
+        LinkTimeline timeline;
+        link_proto_timeline(&timeline);  // valid() already confirmed true
+        LinkGhostXForm xform = link_measurement_current_xform();
+        int64_t ghost_now_us = link_ghost_xform_host_to_ghost(xform, esp_timer_get_time());
+        return link_phase_beats_now(timeline, ghost_now_us);
+    }
+
+    // MIDI: 24 PPQN pulse count → beats. Monotonic while the clock runs.
+    return (double)midi_clock_pulse_count() / (double)MCK_PPQN;
 }
 
 extern "C" bool tempo_source_phase_valid(void) {
