@@ -13,4 +13,8 @@ void touch_display_begin(void);
 // Poll touch, echo raw coordinates to Serial + on-screen. Call from loop().
 void touch_display_tick(void);
 
+// LNK-015: refresh the status screen's live fields (BPM, phase wheel). Cheap,
+// ~10 Hz internally; call once per loop() iteration. Call from loop().
+void touch_display_update(void);
+
 #endif // TOUCH_DISPLAY_H
