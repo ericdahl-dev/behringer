@@ -25,7 +25,7 @@ static void midi_poll_task(void*) {
                 s_ring[s_head % RING_SIZE] = t;
                 s_head++;
                 s_pulse_count++;
-                if (s_pulse_count % MCK_CLOCK_WINDOW == 0) s_beat_flag = true;
+                if (s_pulse_count % MCK_PPQN == 0) s_beat_flag = true;  // per beat, not per BPM window
                 portEXIT_CRITICAL(&s_mux);
             }
         }

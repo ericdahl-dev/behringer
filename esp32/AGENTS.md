@@ -64,6 +64,7 @@ Notes:
 | `bpm_tracker.*` | change/threshold detection |
 | `osc_out.*` / `osc_sender.*` | OSC packet build / UDP send to the mixer |
 | `app_config.*` · `app_config_nvs.cpp` | config struct, validation, NVS persistence (incl. `input_source`) |
+| `tempo_snapshot.{h,c}` | ARC-001 seam: atomic `{bpm,phase,valid,quantum}` — one writer (`bpm_task`), many readers (web `/status`, UI, serial); replaces the old loose `g_current_*` globals + mutex |
 | `web_config.*` | rack-panel config web UI + captive portal + `/status` live-BPM endpoint |
 | `config.h` | per-firmware constants (Link/MIDI timing, first-boot defaults) |
 | `touch_display.{h,cpp}` | on-device 1.47" LCD + touch UI (raw LovyanGFX, no LVGL): status / settings / IP-keypad screens. X32Link-only, gated `HAS_TOUCH_DISPLAY` (LNK-014/015) |

@@ -13,13 +13,11 @@
 #include "axs5106l.h"
 #include "touch_ui.h"        // LNK-015: pure UI logic (hit-test, formatting, taps)
 #include "tempo_source.h"    // tempo_source_active() (side-effect-free read)
+#include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum}
 
-// Shared globals maintained by X32Link.ino — same pattern web_config.cpp uses.
+extern AppConfig g_config;
+// Live tempo via tempo_snapshot_read() — one coherent read, no torn fields.
 // (Do NOT call tempo_source_beat() here — it self-clears and led_task owns it.)
-extern AppConfig      g_config;
-extern volatile float g_current_bpm;
-extern volatile float g_current_phase;   // -1.0f when no valid phase
-extern volatile bool  g_phase_valid;
 
 // ---- Panel (validated on glass, LNK-014 Progress) --------------------------
 // JD9853 via LovyanGFX Panel_ST7789. Pins: SCK38 MOSI39 DC45 CS21 RST40, BL46.
@@ -318,10 +316,11 @@ void touch_display_update(void) {
     s_last_update_ms = now;
 
     bool active = tempo_source_active();
+    TempoSnapshot ts; tempo_snapshot_read(&ts);
 
     // BPM number — repaint only when the shown text changes (no flicker).
     char bpm[8];
-    if (active) ui_bpm_str(bpm, sizeof bpm, g_current_bpm);
+    if (active) ui_bpm_str(bpm, sizeof bpm, ts.bpm);
     else        snprintf(bpm, sizeof bpm, "--.-");   // no live signal
     if (strcmp(bpm, s_bpm_shown) != 0) {
         s_lcd.fillRect(8, 44, 160, 34, TFT_BLACK);
@@ -348,7 +347,7 @@ void touch_display_update(void) {
     }
 
     // Phase wheel: sweeping marker once phase is valid, else "syncing".
-    bool valid = g_phase_valid && g_current_phase >= 0.0f;
+    bool valid = ts.valid;                          // snapshot: valid ⇒ phase >= 0
     if (valid != s_wheel_valid_shown) {            // state change: clear interior
         s_lcd.fillCircle(WHEEL_CX, WHEEL_CY, WHEEL_R - 1, TFT_BLACK);
         s_lcd.drawCircle(WHEEL_CX, WHEEL_CY, WHEEL_R, TFT_DARKGREEN);
@@ -356,7 +355,7 @@ void touch_display_update(void) {
         s_wheel_valid_shown = valid;
     }
     if (valid) {
-        float ang = ui_phase_angle(g_current_phase, (float)g_config.quantum_beats);
+        float ang = ui_phase_angle(ts.phase, (float)ts.quantum);
         float rad = (ang - 90.0f) * 0.01745329f;   // deg->rad; 0deg at top
         int mx = WHEEL_CX + (int)(cosf(rad) * (WHEEL_R - 8));
         int my = WHEEL_CY + (int)(sinf(rad) * (WHEEL_R - 8));
