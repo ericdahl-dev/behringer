@@ -30,6 +30,27 @@ float ui_phase_angle(float phase, float quantum) {
     return frac / quantum * 360.0f;
 }
 
+// Shared buffer edit: '\b' backspaces (no-op if empty); otherwise append when
+// the key passes `accept` and there is room (len < cap-1). Always NUL-terminated.
+static void ui_buf_apply(char *buf, size_t cap, char key, int (*accept)(char)) {
+    if (!buf || cap == 0) return;
+    size_t len = strlen(buf);
+    if (key == '\b') {
+        if (len > 0) buf[len - 1] = '\0';
+        return;
+    }
+    if (accept(key) && len < cap - 1) {
+        buf[len] = key;
+        buf[len + 1] = '\0';
+    }
+}
+
+static int accept_printable(char c) { return c >= 0x20 && c < 0x7f; }
+
+void ui_kbd_apply(char *buf, size_t cap, char key) {
+    ui_buf_apply(buf, cap, key, accept_printable);
+}
+
 void ui_apply_settings_tap(AppConfig *cfg, int field_id) {
     if (!cfg) return;
     switch (field_id) {

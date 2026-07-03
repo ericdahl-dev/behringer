@@ -78,11 +78,28 @@ void test_ui_apply_settings_tap(void) {
     TEST_ASSERT_EQUAL_INT(2, c.fx_slot);
 }
 
+// Task 5: ui_kbd_apply — append printable, '\b' backspace, ignore when full.
+void test_ui_kbd_apply(void) {
+    char b[4] = "";
+    ui_kbd_apply(b, sizeof b, 'a');
+    ui_kbd_apply(b, sizeof b, 'b');
+    TEST_ASSERT_EQUAL_STRING("ab", b);
+    ui_kbd_apply(b, sizeof b, '\b');
+    TEST_ASSERT_EQUAL_STRING("a", b);
+    char e[4] = "";
+    ui_kbd_apply(e, sizeof e, '\b');       // backspace empty = no-op
+    TEST_ASSERT_EQUAL_STRING("", e);
+    char f[3] = "ab";
+    ui_kbd_apply(f, sizeof f, 'c');        // full = ignored
+    TEST_ASSERT_EQUAL_STRING("ab", f);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_hit);
     RUN_TEST(test_ui_bpm_str);
     RUN_TEST(test_ui_phase_angle);
     RUN_TEST(test_ui_apply_settings_tap);
+    RUN_TEST(test_ui_kbd_apply);
     return UNITY_END();
 }
