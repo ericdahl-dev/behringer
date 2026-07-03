@@ -9,12 +9,6 @@
 #include "osc_sender.h"
 #include "web_config.h"
 #include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum} read path
-// LNK-026 diagnostic (temporary): raw Link phase inputs for the /phasedbg endpoint.
-#include "link_protocol.h"
-#include "link_measurement.h"
-#include "link_measurement_io.h"
-#include "link_phase.h"
-#include "esp_timer.h"
 #ifdef HAS_TOUCH_DISPLAY     // LNK-025: implied by the board flag in config.h (included above)
 #include "touch_display.h"   // LNK-014: 1.47" JD9853 LCD + AXS5106L touch
 #endif
@@ -30,27 +24,6 @@
 #define WIFI_DOWN_BLINK_INTERVAL_MS  4000
 
 AppConfig g_config;
-
-// LNK-026 diagnostic (temporary): dump the raw Link phase inputs so we can see,
-// across a transport stop/start, which one goes stale — the gossiped timeline
-// origin (beatOrigin/timeOrigin) or the measured clock intercept. Consumed by
-// web_config.cpp's /phasedbg endpoint via a weak hook; X32MidiClock has no Link
-// sources so it leaves that hook undefined. Remove once LNK-026 is fixed.
-extern "C" int phasedbg_json(char* buf, int cap) {
-    LinkTimeline tl; bool seen = link_proto_timeline(&tl);
-    LinkGhostXForm xf = link_measurement_current_xform();
-    int64_t host  = esp_timer_get_time();
-    int64_t ghost = link_ghost_xform_host_to_ghost(xf, host);
-    double  beats = seen ? link_phase_beats_now(tl, ghost) : 0.0;
-    return snprintf(buf, cap,
-        "{\"peers\":%d,\"seen\":%s,\"upb\":%lld,\"borig\":%lld,\"torig\":%lld,"
-        "\"xvalid\":%s,\"icept\":%lld,\"ghost\":%lld,\"beats\":%.4f,\"q\":%d,\"resets\":%u}",
-        link_proto_peers(), seen ? "true" : "false",
-        (long long)tl.micros_per_beat, (long long)tl.beat_origin_micro,
-        (long long)tl.time_origin_us, xf.valid ? "true" : "false",
-        (long long)xf.intercept_us, (long long)ghost, beats, g_config.quantum_beats,
-        link_measurement_io_epoch_resets());
-}
 
 // Live tempo now lives behind the tempo_snapshot seam (ARC-001) — the old
 // g_current_bpm / g_current_phase / g_phase_valid globals + g_bpm_mutex are

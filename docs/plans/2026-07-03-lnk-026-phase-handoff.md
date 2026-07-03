@@ -53,9 +53,51 @@ timeline origin + stale clock offset = garbage** (observed `beats` spiking to ~1
 
 ---
 
-## Bug 2 — static ~2-beat phase offset  ⚠️ OPEN (the real remaining work)
+## Bug 2 — static ~2-beat phase offset  ✅ FIXED & VERIFIED (2026-07-03)
 
-### Symptom
+### Root cause (confirmed on hardware — it was hypothesis 2, the measurement path)
+Built a reference-truth Link peer (real Ableton Link SDK on the Mac) and measured
+the device's committed GhostXForm against the true session ghost clock (pinging
+Live's own measurement responder directly). The device `ghost` ran a **hard
+−985 ms (≈ −2.05 beats)** behind truth — a pure host→ghost **measurement** error,
+**not** a timeline (`beat_origin`/`time_origin`) error (the ghost comparison is
+timeline-independent). Temporary `rtt`/`refip` fields on `/phasedbg` then caught
+the mechanism live: RTT jumped from a clean **52 ms** to **2,005,487 µs ≈ 2.005 s**
+(one `REMEASURE_INTERVAL_US`), and at that instant committed `icept` dropped
+**546777674 → 545802313 = −975 µs·10³ ≈ −2 beats**.
+
+**Mechanism — a stale pong poisons the next attempt:**
+1. An attempt reaches `LINK_MEASUREMENT_READY_SAMPLES` (8), calls
+   `attempt_end(true)` and `return`s — leaving the *last* pong(s) **unread** in
+   the WiFiUDP RX buffer.
+2. The device goes idle; `link_measurement_io_poll()` early-returns without
+   draining, sends no pings, so no fresh pongs arrive.
+3. ~2 s later `start_attempt()` fires a new ping and the drain loop reads the
+   **2 s-old stale pong first**. Its echoed `host_time` is 2 s old →
+   `sample_a = g − (h_send + h_recv)/2` with `h_send` 2 s stale → icept
+   underestimated by ~RTT/2 ≈ 1 s ≈ 2 beats → phase 2 beats off.
+
+This is why the first post-boot measurement looked right ("on by eye" in LNK-020
+step 1) and `resets=0`: the fresh attempt is clean; the *re-measure* poisons it.
+
+### The fix (two layers)
+- **Root** (`link_measurement_io.cpp::start_attempt`): flush any packets left in
+  the RX buffer before the first ping, so an attempt only ever sees its own pongs.
+- **Guard** (pure, host-tested — `link_measurement.c::link_measurement_add_pong_samples`):
+  reject any pong whose round trip (`h_recv − echoed host_time`) is negative or
+  exceeds `LINK_MEASUREMENT_MAX_RTT_US` (250 ms — the watchdog's own
+  5×50 ms abandon window, so anything older isn't part of a live exchange). New
+  tests `test_add_pong_samples_rejects_stale_rtt` / `_rejects_negative_rtt` in
+  `test/test_link_measurement.c`.
+
+### Verification (on hardware, across a reboot)
+Device `ghost` vs reference-truth: **beat_err −0.026 beats (≈ −12 ms)**, steady,
+`xvalid` holds — down from **−2.05 beats / −985 ms**. Residual ~12 ms is the 50 ms
+poll cadence (sub-frame). Host suite green (32 measurement-suite tests + rest).
+
+---
+
+### Symptom (as originally found)
 With **Ableton Live + Note both in the session and agreeing with each other**, the **device wheel
 is exactly 2 beats behind**: the musical "1" crosses the device wheel at **6:00** in quantum 4
 (phase 2 of 4) and at **9:00** in quantum 8 (phase 6 of 8). Two quanta, same absolute **2-beat**
@@ -115,13 +157,13 @@ Committed on the branch (WIP): the Bug-1 fix, the temporary diagnostic, and task
 **NOT committed / must stay local:** `esp32/X32Link/build_opt.h` (`-DBOARD_WAVESHARE_S3_TOUCH_LCD_147`,
 per AGENTS.md keep empty at HEAD). Unrelated iOS/CLI working changes were left untouched.
 
-### ⚠️ Temporary diagnostic to REMOVE before the final PR
-These were added only to instrument the bug and **must be reverted** before landing:
-- `X32Link/web_config.cpp`: `/phasedbg` handler + `handle_phasedbg` + the weak
+### ✅ Temporary diagnostic REMOVED (2026-07-03)
+The `/phasedbg` instrumentation has been fully stripped and the production build
+re-flashed + confirmed (`GET /phasedbg` → 404, `/status` clean). Removed:
+- `X32Link/web_config.cpp`: `/phasedbg` handler + `handle_phasedbg` + weak
   `phasedbg_json` hook + both `server.on("/phasedbg", ...)` registrations.
-- `X32Link/X32Link.ino`: the `phasedbg_json()` function, the diagnostic `#include`s
-  (`link_protocol.h`, `link_measurement.h`, `link_measurement_io.h`, `link_phase.h`, `esp_timer.h`),
-  and the `resets` field.
+- `X32Link/X32Link.ino`: the `phasedbg_json()` function + the diagnostic `#include`s
+  (`link_protocol.h`, `link_measurement.h`, `link_measurement_io.h`, `link_phase.h`, `esp_timer.h`).
 - `X32Link/link_measurement_io.{h,cpp}`: the `s_epoch_resets` counter +
   `link_measurement_io_epoch_resets()` getter (the `check_epoch_reset()` LOGIC stays — that's the fix).
 
@@ -136,8 +178,14 @@ state and the `check_epoch_reset()` call in `_poll()`, and the `link_phase.h` in
 - Flash: `arduino-cli upload --fqbn '<above>' -p /dev/cu.usbmodem2101 X32Link`.
 
 ### Board / test rig
-- Device `/status` and `/phasedbg` at `http://192.168.0.74/`. Serial is flaky on this native-USB
-  board — use the web endpoints.
+- Device `/status` at `http://192.168.0.74/`. Serial is flaky on this native-USB
+  board — use the web endpoints. Note: the native-USB CDC port re-enumerates on
+  reset (`/dev/cu.usbmodem2101` ↔ `1101`) — re-check `arduino-cli board list` if an
+  upload fails with esptool "exit status 2".
+- Reference-truth rig (used to root-cause bug 2): `scratchpad/linkprobe.cpp` is the
+  real Ableton Link SDK compiled on the Mac; it joins the session and prints true
+  beat/phase. `ghostcheck.py` pings Live's measurement responder directly to get the
+  true ghost clock and diffs it against the device.
 - Reproduce Bug 2 with **Ableton Live** (reference peer) + optionally Note in the same Link session;
   compare the device wheel top vs Live's bar-1.
 

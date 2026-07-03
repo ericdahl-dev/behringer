@@ -49,9 +49,6 @@ static int64_t       s_next_measure_us = 0;
 // transport) — see check_epoch_reset().
 static bool    s_have_last_origin   = false;
 static int64_t s_last_time_origin_us = 0;
-static uint32_t s_epoch_resets       = 0;  // diagnostic count (LNK-026)
-
-uint32_t link_measurement_io_epoch_resets(void) { return s_epoch_resets; }
 
 // esp_timer_get_time(), not millis()/micros() — see LNK-019 for why
 // microsecond precision matters specifically in this path.
@@ -82,6 +79,14 @@ static void send_ping(int64_t when_us) {
 }
 
 static void start_attempt(uint32_t ip, uint16_t port) {
+    // LNK-026 bug 2: discard any pong still sitting in the RX buffer from the
+    // previous attempt. We stop reading the instant an attempt commits (8
+    // samples) and go idle for REMEASURE_INTERVAL_US, so a late pong lingers;
+    // consumed at the top of the next attempt it echoes a ~2s-old host_time,
+    // and its poisoned sample_a underestimates the GhostXForm by ~1s (~2 beats).
+    // Flush so a fresh attempt only ever sees its own pongs.
+    { uint8_t junk[128]; while (s_udp.parsePacket() > 0) s_udp.read(junk, sizeof(junk)); }
+
     s_ref_ip   = ip;
     s_ref_port = port;
     s_have_ref = true;
@@ -141,7 +146,6 @@ static void check_epoch_reset() {
         link_measurement_reset();   // invalidate committed xform -> phase_valid false
         s_have_ref        = false;  // make check_trigger() start a fresh attempt
         s_next_measure_us = 0;      // re-measure now, don't wait REMEASURE_INTERVAL_US
-        s_epoch_resets++;           // diagnostic (LNK-026)
     }
     s_last_time_origin_us = tl.time_origin_us;
     s_have_last_origin    = true;
