@@ -35,14 +35,6 @@ AppConfig g_config;
 // LNK-023.
 static bool s_ap_mode = false;
 
-// Phase snapshot for the web beat dot (LNK-022) — read by web_config.cpp's
-// handle_status(), refreshed by bpm_task() below from tempo_source_phase()/
-// tempo_source_phase_valid(). See the extern decl comment in web_config.cpp
-// for why this goes through a global instead of a direct call (that file is
-// symlinked into X32MidiClock, which has no tempo_source.h).
-volatile float g_current_phase = -1.0f;
-volatile bool  g_phase_valid   = false;
-
 // Beat LED. ESP32-S3 Super Mini: a plain LED on GPIO48, active-HIGH (proven by
 // the original MIDI firmware). Define LED_ACTIVE_LOW for an active-low board
 // (e.g. XIAO), or LED_RGB for a board with an addressable WS2812. Define
@@ -295,6 +287,7 @@ void setup() {
 void loop() {
 #ifdef HAS_TOUCH_DISPLAY
     touch_display_tick();    // LNK-014: poll AXS5106L, echo coords to LCD + Serial
+    touch_display_update();  // LNK-015: refresh status screen live fields (BPM, phase wheel)
 #endif
     // Gated on !s_ap_mode (LNK-023): once parked in AP fallback, WiFi.status()
     // is never WL_CONNECTED (we're in WIFI_AP mode, not WIFI_STA) — without
