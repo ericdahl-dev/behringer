@@ -80,6 +80,17 @@ form{padding:6px 26px 26px}
 .fld .pre{color:#4b535b;font-size:12px;letter-spacing:.1em;padding-right:9px;border-right:1px solid var(--line);margin-right:11px}
 .fld input{flex:1;appearance:none;background:transparent;border:0;outline:0;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:13px 0}
 .fld input::placeholder{color:#434a52}
+.sw{display:flex;align-items:center;gap:13px;cursor:pointer;user-select:none;padding:6px 0}
+.sw input{position:absolute;opacity:0;width:0;height:0}
+.sw .track{position:relative;flex:none;width:52px;height:28px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);transition:background .2s,border-color .2s,box-shadow .2s}
+.sw .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#5b636b;box-shadow:0 1px 2px rgba(0,0,0,.5);transition:left .2s,background .2s}
+.sw input:checked + .track{background:linear-gradient(180deg,#caff5a,#9be32a);border-color:#7fbf1f;box-shadow:0 0 14px -3px var(--led)}
+.sw input:checked + .track .knob{left:28px;background:#0a0d07}
+.sw input:focus-visible + .track{box-shadow:0 0 0 3px rgba(182,255,54,.18)}
+.sw .swlbl{font-family:var(--mono);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.sw .swlbl::after{content:"Off"}
+.sw input:checked ~ .swlbl{color:var(--led)}
+.sw input:checked ~ .swlbl::after{content:"On"}
 .slots{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
 .slot{appearance:none;border:1px solid var(--line);background:var(--panel-2);color:#5b636b;font-family:var(--mono);font-size:13px;border-radius:7px;padding:12px 0;cursor:pointer;transition:.16s}
 .slot[aria-pressed=true]{color:#0a0d07;background:linear-gradient(180deg,#caff5a,#9be32a);border-color:#7fbf1f;box-shadow:0 0 14px -3px var(--led)}
@@ -128,8 +139,8 @@ form .row:nth-child(2){animation-delay:.10s}form .row:nth-child(3){animation-del
 <div class="fld"><span class="pre">BEATS</span><input type="number" name="quantum_beats" value="%QUANTUM%" min="1" max="16" step="1" inputmode="numeric"></div>
 </div>
 <div class="row">
-<div class="cap"><label>MIDI Clock Out</label><span class="hint">Link&rarr;USB 0xF8 &middot; restart to apply</span></div>
-<div class="fld"><span class="pre">24PPQN</span><input type="number" name="midi_clock_out" value="%MCKOUT%" min="0" max="1" step="1" inputmode="numeric"></div>
+<div class="cap"><label>MIDI Clock Out</label><span class="hint">Link&rarr;USB 24PPQN 0xF8 &middot; restart to apply</span></div>
+<label class="sw"><input type="checkbox" name="midi_clock_out" value="1" %MCKCHK%><span class="track"><span class="knob"></span></span><span class="swlbl"></span></label>
 </div>
 <div class="row">
 <div class="cap"><label>Mixer IP</label><span class="hint">on this network</span></div>
@@ -220,7 +231,7 @@ static String build_html() {
     h.replace("%IP%",    g_config.mixer_ip);
     h.replace("%SLOT%",  String(g_config.fx_slot));
     h.replace("%QUANTUM%", String(g_config.quantum_beats));
-    h.replace("%MCKOUT%", String(g_config.midi_clock_out_enable));
+    h.replace("%MCKCHK%", g_config.midi_clock_out_enable ? "checked" : "");
     h.replace("%SRC%",   String(g_config.input_source));
     h.replace("%SSID%",  g_config.wifi_ssid);
     h.replace("%BPM%",   bpm);
