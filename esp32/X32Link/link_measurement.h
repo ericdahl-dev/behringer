@@ -45,6 +45,15 @@ extern "C" {
 // + PrevGHostTime TLV).
 #define LINK_MEASUREMENT_PING_MAX_LEN 41
 
+// LNK-026 (bug 2): reject pong samples whose round trip (h_recv - echoed
+// host_time) is negative or exceeds this bound. A stale pong left in the RX
+// buffer across the idle gap between attempts echoes a host_time ~one
+// remeasure interval (2 s) old; committing it underestimates the GhostXForm by
+// ~rtt/2 (~1 s ~= 2 beats), skewing phase. The watchdog abandons an attempt
+// after 5*50ms = 250ms of silence, so any pong older than that is by
+// definition not part of a live exchange — 250ms is the principled cutoff.
+#define LINK_MEASUREMENT_MAX_RTT_US 250000
+
 typedef struct {
     int64_t intercept_us;  // signed microsecond offset, host -> ghost
     bool    valid;

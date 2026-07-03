@@ -62,6 +62,24 @@ void test_phase_from_beats_at_exact_quantum_boundary(void) {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, (float)phase);
 }
 
+// LNK-026: a real re-origin (captured on hardware) jumps time_origin backward by
+// ~510 seconds — the session's ghost-time epoch reset when transport restarted.
+void test_epoch_reset_detects_backward_jump(void) {
+    TEST_ASSERT_TRUE(link_phase_timeline_epoch_reset(510898878, 416793));
+}
+
+// Normal play: time_origin advances forward every gossip -> never a reset.
+void test_epoch_reset_ignores_forward_advance(void) {
+    TEST_ASSERT_FALSE(link_phase_timeline_epoch_reset(498285685, 498941640));
+}
+
+// A small backward step (UDP reordering / gossip jitter delivering a slightly
+// older timeline) must NOT be treated as a re-origin — else the wheel flickers
+// to "syncing" on every out-of-order packet.
+void test_epoch_reset_ignores_small_backward_jitter(void) {
+    TEST_ASSERT_FALSE(link_phase_timeline_epoch_reset(500000000, 499500000));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_beats_now_one_beat_elapsed);
@@ -72,5 +90,8 @@ int main(void) {
     RUN_TEST(test_phase_from_beats_negative_beats_now);
     RUN_TEST(test_phase_from_beats_negative_beats_now_multi_bar);
     RUN_TEST(test_phase_from_beats_at_exact_quantum_boundary);
+    RUN_TEST(test_epoch_reset_detects_backward_jump);
+    RUN_TEST(test_epoch_reset_ignores_forward_advance);
+    RUN_TEST(test_epoch_reset_ignores_small_backward_jitter);
     return UNITY_END();
 }
