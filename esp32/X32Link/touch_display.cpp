@@ -90,6 +90,15 @@ static uint32_t s_last_update_ms = 0;
 static const ui_rect_t STATUS_SET_RECT   = {116, 4, 52, 28};   // "SET" on status
 static const ui_rect_t SETTINGS_BACK_RECT = {8, 280, 90, 34};  // "< back" on settings
 
+#define ACT_BACK 100   // settings tap-table action id (outside the UI_F_* range)
+
+// Settings edit state (Task 10): a working copy of g_config that taps mutate,
+// plus the current settings screen's interactive rect table (rebuilt each draw).
+static AppConfig s_working;
+static ui_rect_t s_set_rects[20];
+static int       s_set_fields[20];
+static int       s_set_n = 0;
+
 // LNK-015 Task 7/8: status screen. draw_status() paints the static frame;
 // touch_display_update() (Task 8) refreshes the live BPM number + phase wheel.
 static void draw_status(void) {
@@ -129,14 +138,77 @@ static void draw_status(void) {
     s_wheel_valid_shown = false;
 }
 
-// Task 9: minimal settings screen (real fields land in Task 10). Just a title
-// and a back button so touch navigation is verifiable now.
+static ui_rect_t rect(int x, int y, int w, int h) {
+    ui_rect_t r; r.x = (int16_t)x; r.y = (int16_t)y; r.w = (int16_t)w; r.h = (int16_t)h;
+    return r;
+}
+
+static void set_add(ui_rect_t r, int field) {
+    if (s_set_n < (int)(sizeof s_set_rects / sizeof s_set_rects[0])) {
+        s_set_rects[s_set_n] = r;
+        s_set_fields[s_set_n] = field;
+        s_set_n++;
+    }
+}
+
+// A labeled pill: filled when selected, outlined otherwise. Registers its tap rect.
+static void set_seg(ui_rect_t r, const char *label, bool sel, int field) {
+    if (sel) {
+        s_lcd.fillRoundRect(r.x, r.y, r.w, r.h, 4, TFT_DARKGREEN);
+        s_lcd.setTextColor(TFT_BLACK, TFT_DARKGREEN);
+    } else {
+        s_lcd.drawRoundRect(r.x, r.y, r.w, r.h, 4, TFT_DARKGREY);
+        s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    }
+    s_lcd.setTextSize(2);
+    int tw = (int)strlen(label) * 12;                 // ~12 px/char at size 2
+    s_lcd.setCursor(r.x + (r.w - tw) / 2, r.y + (r.h - 16) / 2);
+    s_lcd.print(label);
+    set_add(r, field);
+}
+
+static void set_label(int y, const char *s) {
+    s_lcd.setTextColor(TFT_DARKGREEN, TFT_BLACK);
+    s_lcd.setTextSize(1);
+    s_lcd.setCursor(8, y);
+    s_lcd.print(s);
+}
+
+// Task 10: full settings screen, drawn from s_working. Taps mutate s_working via
+// ui_apply_settings_tap() + redraw. Persistence is Task 11 (Write & Reboot).
 static void draw_settings(void) {
     s_lcd.fillScreen(TFT_BLACK);
+    s_set_n = 0;
+
     s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
     s_lcd.setTextSize(2);
-    s_lcd.setCursor(8, 10);
+    s_lcd.setCursor(8, 6);
     s_lcd.print("SETTINGS");
+
+    set_label(32, "SOURCE");
+    set_seg(rect(8,  44, 76, 28), "LINK", s_working.input_source == 0, UI_F_SRC_LINK);
+    set_seg(rect(88, 44, 76, 28), "MIDI", s_working.input_source == 1, UI_F_SRC_MIDI);
+
+    set_label(80, "MODEL");
+    set_seg(rect(8,  92, 76, 28), "XR",  s_working.model == MODEL_XR18, UI_F_MODEL_XR);
+    set_seg(rect(88, 92, 76, 28), "X32", s_working.model == MODEL_X32,  UI_F_MODEL_X32);
+
+    set_label(128, "FX SLOT");
+    int smax = config_model_slot_max(s_working.model);
+    for (int s = 1; s <= smax; s++) {
+        int col = (s - 1) % 4, row = (s - 1) / 4;
+        char num[3]; snprintf(num, sizeof num, "%d", s);
+        set_seg(rect(8 + col * 40, 140 + row * 32, 34, 28),
+                num, s_working.fx_slot == s, UI_F_SLOT_1 + (s - 1));
+    }
+
+    set_label(210, "QUANTUM (beats/bar)");
+    set_seg(rect(8, 222, 34, 30), "-", false, UI_F_QUANTUM_DEC);
+    s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    s_lcd.setTextSize(3);
+    s_lcd.setCursor(66, 224);
+    s_lcd.printf("%d", s_working.quantum_beats);
+    set_seg(rect(124, 222, 34, 30), "+", false, UI_F_QUANTUM_INC);
 
     s_lcd.drawRoundRect(SETTINGS_BACK_RECT.x, SETTINGS_BACK_RECT.y,
                         SETTINGS_BACK_RECT.w, SETTINGS_BACK_RECT.h, 5, TFT_GREEN);
@@ -144,6 +216,13 @@ static void draw_settings(void) {
     s_lcd.setTextSize(2);
     s_lcd.setCursor(SETTINGS_BACK_RECT.x + 12, SETTINGS_BACK_RECT.y + 9);
     s_lcd.print("< back");
+    set_add(SETTINGS_BACK_RECT, ACT_BACK);
+}
+
+static void enter_settings(void) {
+    s_working = g_config;          // edit a copy; commit is Task 11 (Write & Reboot)
+    s_screen = SCREEN_SETTINGS;
+    draw_settings();
 }
 
 void touch_display_update(void) {
@@ -252,14 +331,13 @@ void touch_display_tick(void) {
         int x = t.points[0].x;                 // rotation-4: X maps direct,
         int y = 319 - t.points[0].y;           //             Y is inverted
         if (s_screen == SCREEN_STATUS) {
-            if (ui_hit(&STATUS_SET_RECT, 1, x, y) >= 0) {
-                s_screen = SCREEN_SETTINGS;
-                draw_settings();
-            }
+            if (ui_hit(&STATUS_SET_RECT, 1, x, y) >= 0) enter_settings();
         } else if (s_screen == SCREEN_SETTINGS) {
-            if (ui_hit(&SETTINGS_BACK_RECT, 1, x, y) >= 0) {
-                s_screen = SCREEN_STATUS;
-                draw_status();
+            int i = ui_hit(s_set_rects, s_set_n, x, y);
+            if (i >= 0) {
+                int f = s_set_fields[i];
+                if (f == ACT_BACK) { s_screen = SCREEN_STATUS; draw_status(); }
+                else { ui_apply_settings_tap(&s_working, f); draw_settings(); }
             }
         }
     } else if (!touched) {
