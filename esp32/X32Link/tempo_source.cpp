@@ -103,7 +103,13 @@ extern "C" float tempo_source_phase(float quantum) {
 extern "C" bool tempo_source_phase_valid(void) {
     if (s_kind == TEMPO_SRC_LINK) {
         LinkTimeline timeline;
-        return link_measurement_active() && link_proto_timeline(&timeline);
+        // Valid once we hold a COMMITTED GhostXForm and the timeline is parsed.
+        // NOT link_measurement_active(): `active` is true only while an attempt is
+        // in flight and goes false the instant it commits, so gating on it made
+        // phase valid for the ~ms an attempt ran and invalid the moment it
+        // succeeded — the intermittent "flashing" phase. The committed xform (same
+        // one tempo_source_phase() reads) is the real source of truth.
+        return link_measurement_current_xform().valid && link_proto_timeline(&timeline);
     }
     return midi_phase_valid(midi_clock_pulse_count(), g_config.quantum_beats);
 }
