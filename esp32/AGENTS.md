@@ -68,6 +68,8 @@ Notes:
 | `tempo_snapshot.{h,c}` | ARC-001 seam: atomic `{bpm,phase,valid,quantum}` — one writer (`bpm_task`), many readers (web `/status`, UI, serial); replaces the old loose `g_current_*` globals + mutex |
 | `web_config.*` | rack-panel config web UI + captive portal + `/status` live-BPM endpoint |
 | `config.h` | per-firmware constants (Link/MIDI timing, first-boot defaults) |
+| `touch_display.{h,cpp}` | on-device 1.47" LCD + touch UI (raw LovyanGFX, no LVGL): status / settings / IP-keypad screens. X32Link-only, gated `HAS_TOUCH_DISPLAY` (LNK-014/015) |
+| `touch_ui.{h,c}` + `axs5106l.{h,c}` | pure, host-tested UI logic: `touch_ui` = hit-testing / value formatting / config-field taps / keypad buffer; `axs5106l` = AXS5106L touch-report parser |
 | `X32_emulator/` | X32 on-device emulator for integration tests |
 
 Shared C files are real in `X32Link/` and **symlinked** into `X32MidiClock/`
