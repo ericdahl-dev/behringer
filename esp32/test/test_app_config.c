@@ -119,11 +119,52 @@ void test_validate_accepts_chan_16(void) {
     TEST_ASSERT_TRUE(config_validate(&cfg));
 }
 
+void test_defaults_quantum_beats_is_4(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    TEST_ASSERT_EQUAL_INT(4, cfg.quantum_beats);
+}
+
+void test_validate_rejects_quantum_beats_zero(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.quantum_beats = 0;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_rejects_quantum_beats_above_16(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.quantum_beats = 17;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
+void test_validate_accepts_quantum_beats_1(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.quantum_beats = 1;
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
+void test_validate_accepts_quantum_beats_16(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.quantum_beats = 16;
+    TEST_ASSERT_TRUE(config_validate(&cfg));
+}
+
+void test_validate_rejects_negative_quantum_beats(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.quantum_beats = -1;
+    TEST_ASSERT_FALSE(config_validate(&cfg));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_defaults_fdr_chan_is_32);
     RUN_TEST(test_validate_rejects_bad_chan_count);
     RUN_TEST(test_validate_accepts_chan_16);
+    RUN_TEST(test_defaults_quantum_beats_is_4);
+    RUN_TEST(test_validate_rejects_quantum_beats_zero);
+    RUN_TEST(test_validate_rejects_quantum_beats_above_16);
+    RUN_TEST(test_validate_accepts_quantum_beats_1);
+    RUN_TEST(test_validate_accepts_quantum_beats_16);
+    RUN_TEST(test_validate_rejects_negative_quantum_beats);
     RUN_TEST(test_defaults_model_is_xr18);
     RUN_TEST(test_defaults_fx_slot_is_1);
     RUN_TEST(test_defaults_ip_set);

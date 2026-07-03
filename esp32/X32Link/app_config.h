@@ -17,6 +17,7 @@ typedef struct {
     int  input_source;  // 0 = Ableton Link, 1 = USB MIDI clock
     int  fdr_enable;    // X32FaderDisp: 0 = off, 1 = write dB to scribble names
     int  fdr_chan_count;// X32FaderDisp: 16 (XR18) or 32 (X32)
+    int  quantum_beats; // bar-quantized phase: beats per bar, 1-16 (LNK-019)
 } AppConfig;
 
 void config_defaults(AppConfig* cfg);

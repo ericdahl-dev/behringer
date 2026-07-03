@@ -6,6 +6,10 @@ CFLAGS  = -Wall -Wextra -g \
 
 UNITY   = ../lib/unity/src/unity.c
 PROTO   = ../X32Link/link_protocol.c
+MEAS    = ../X32Link/link_measurement.c
+PHASE   = ../X32Link/link_phase.c
+LEDPHASE = ../X32Link/led_phase.c
+WIFIBLINK = ../X32Link/wifi_down_blink.c
 TRACKER = ../X32Link/bpm_tracker.c
 CFG     = ../X32Link/app_config.c
 OSC     = ../X32Link/osc_out.c
@@ -13,24 +17,42 @@ MIDICALC = ../X32MidiClock/midi_bpm_calc.c
 PUB     = ../X32Link/bpm_publisher.c
 OSCIN   = ../X32Link/osc_in.c
 FADERDB = ../X32FaderDisp/fader_db.c
+STATUSJSON = ../X32Link/web_status_json.c
 
 .PHONY: all clean
 
-all: test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db
+all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json
 	./test_bpm_tracker
 	./test_link_protocol
+	./test_link_measurement
+	./test_link_phase
+	./test_led_phase
+	./test_wifi_down_blink
 	./test_app_config
 	./test_osc_out
 	./test_midi_bpm_calc
 	./test_bpm_publisher
 	./test_osc_in
 	./test_fader_db
+	./test_web_status_json
 	./check_docs.sh
 
 test_bpm_tracker: test_bpm_tracker.c $(TRACKER) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
 test_link_protocol: test_link_protocol.c $(PROTO) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@
+
+test_link_measurement: test_link_measurement.c $(MEAS) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@ -lm
+
+test_link_phase: test_link_phase.c $(PHASE) $(PROTO) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@ -lm
+
+test_led_phase: test_led_phase.c $(LEDPHASE) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@
+
+test_wifi_down_blink: test_wifi_down_blink.c $(WIFIBLINK) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@
 
 test_app_config: test_app_config.c $(CFG) $(UNITY)
@@ -51,5 +73,8 @@ test_osc_in: test_osc_in.c $(OSCIN) $(UNITY)
 test_fader_db: test_fader_db.c $(FADERDB) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
+test_web_status_json: test_web_status_json.c $(STATUSJSON) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@
+
 clean:
-	rm -f test_bpm_tracker test_link_protocol test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db
+	rm -f test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json
