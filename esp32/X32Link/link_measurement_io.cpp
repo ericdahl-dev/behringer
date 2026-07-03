@@ -35,6 +35,15 @@ static int     s_consecutive_timeouts = 0;
 static const int64_t WATCHDOG_US  = 50000;  // 50ms silence watchdog
 static const int      MAX_TIMEOUTS = 5;      // 5 * 50ms = 250ms -> abandon attempt
 
+// Periodic re-measurement (LNK-018 deferred this as a follow-up). Re-measure on
+// an interval so we (a) recover when the peer's advertised mep4 was an
+// unreachable interface on a multi-homed host (Ableton on a Mac advertises its
+// measurement endpoint per-interface; some aren't routable from our subnet), and
+// (b) refresh the GhostXForm as clocks drift. A failed re-measure leaves the
+// committed xform untouched, so a good measurement keeps phase valid meanwhile.
+static const int64_t REMEASURE_INTERVAL_US = 2000000;  // 2 s
+static int64_t       s_next_measure_us = 0;
+
 // esp_timer_get_time(), not millis()/micros() — see LNK-019 for why
 // microsecond precision matters specifically in this path.
 static int64_t now_us() { return esp_timer_get_time(); }
@@ -71,16 +80,18 @@ static void start_attempt(uint32_t ip, uint16_t port) {
     s_have_prev_ghost      = false;
     s_prev_ghost_us        = 0;
     s_consecutive_timeouts = 0;
+    s_next_measure_us      = now_us() + REMEASURE_INTERVAL_US;  // schedule next re-measure
 
     link_measurement_attempt_begin();
     send_ping(now_us());
 }
 
-// Trigger rule (LNK-018): start a fresh attempt on first peer discovered
-// (peer count 0->1), and re-trigger if the reference peer disappears (TTL
-// expiry) and a different peer becomes available. Single reference peer —
-// no multi-peer consensus. No periodic refresh timer yet; follow-up if
-// needed (ticket explicitly allows skipping this for LNK-018).
+// Trigger rule: start a fresh attempt on first peer discovered (peer count
+// 0->1), when a different peer/endpoint appears, OR when the periodic
+// re-measure timer is due (see REMEASURE_INTERVAL_US). The periodic path is
+// what makes phase actually converge on a multi-homed peer: a single one-shot
+// attempt can latch an unreachable advertised interface and never retry.
+// Single reference peer — no multi-peer consensus.
 static void check_trigger() {
     int      peer_count = link_proto_peers();
     uint32_t ip = 0;
@@ -100,7 +111,8 @@ static void check_trigger() {
     }
 
     bool different_peer = !s_have_ref || ip != s_ref_ip || port != s_ref_port;
-    if (different_peer && !link_measurement_active()) {
+    bool due            = now_us() >= s_next_measure_us;   // periodic re-measure
+    if ((different_peer || due) && !link_measurement_active()) {
         start_attempt(ip, port);
     }
 }
