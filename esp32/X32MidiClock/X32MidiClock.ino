@@ -7,6 +7,7 @@
 #include "midi_bpm.h"
 #include "midi_bpm_calc.h"
 #include "bpm_tracker.h"
+#include "bar.h"           // ARC-003: a bar is `quantum` beats
 #include "osc_sender.h"
 #include "web_config.h"
 #include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum} read path
@@ -35,7 +36,7 @@ static void bpm_task(void*) {
             digitalWrite(LED_PIN, HIGH);
             vTaskDelay(pdMS_TO_TICKS(LED_FLASH_MS));
             digitalWrite(LED_PIN, LOW);
-            if (++beat_count >= 4 * MCK_REFRESH_BARS) {
+            if (++beat_count >= bar_beats(g_config.quantum_beats, MCK_REFRESH_BARS)) {
                 beat_count = 0;
                 bar_tick   = true;
             }

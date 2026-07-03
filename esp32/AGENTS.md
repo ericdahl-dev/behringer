@@ -62,6 +62,7 @@ Notes:
 | `link_measurement.{h,c}` + `link_measurement_io.cpp` | Link measurement (ping/pong) client; `link_measurement.c` is pure TLV build/parse + median/offset math (host-tested), `link_measurement_io.cpp` is the thin WiFiUDP unicast glue — pinger-only, no PingResponder |
 | `midi_clock.*` · `midi_bpm.*` · `midi_bpm_calc.*` | USB-MIDI adapter; `midi_bpm_calc` is the pure, host-tested BPM math (symlinked from `X32MidiClock/`) |
 | `bpm_tracker.*` | change/threshold detection |
+| `bar.{h,c}` | ARC-003: a bar is `quantum` beats — `bar_beats()` / `bar_ms()`; one place owns beats-per-bar so non-4/4 `quantum` scales refresh/resend (was a hardcoded `4 *`) |
 | `osc_out.*` / `osc_sender.*` | OSC packet build / UDP send to the mixer |
 | `app_config.*` · `app_config_nvs.cpp` | config struct, validation, NVS persistence (incl. `input_source`) |
 | `tempo_snapshot.{h,c}` | ARC-001 seam: atomic `{bpm,phase,valid,quantum}` — one writer (`bpm_task`), many readers (web `/status`, UI, serial); replaces the old loose `g_current_*` globals + mutex |

@@ -21,10 +21,11 @@ STATUSJSON = ../X32Link/web_status_json.c
 AXS     = ../X32Link/axs5106l.c
 TOUCHUI = ../X32Link/touch_ui.c
 SNAP    = ../X32Link/tempo_snapshot.c
+BAR     = ../X32Link/bar.c
 
 .PHONY: all clean
 
-all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_touch_ui test_tempo_snapshot
+all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_touch_ui test_tempo_snapshot test_bar
 	./test_bpm_tracker
 	./test_link_protocol
 	./test_link_measurement
@@ -40,6 +41,7 @@ all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase t
 	./test_web_status_json
 	./test_touch_ui
 	./test_tempo_snapshot
+	./test_bar
 	./check_docs.sh
 
 test_bpm_tracker: test_bpm_tracker.c $(TRACKER) $(UNITY)
@@ -69,7 +71,7 @@ test_osc_out: test_osc_out.c $(OSC) $(UNITY)
 test_midi_bpm_calc: test_midi_bpm_calc.c $(MIDICALC) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
-test_bpm_publisher: test_bpm_publisher.c $(PUB) $(UNITY)
+test_bpm_publisher: test_bpm_publisher.c $(PUB) $(BAR) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
 test_osc_in: test_osc_in.c $(OSCIN) $(UNITY)
@@ -90,5 +92,8 @@ test_touch_ui: test_touch_ui.c $(TOUCHUI) $(CFG) $(UNITY)
 test_tempo_snapshot: test_tempo_snapshot.c $(SNAP) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@
 
+test_bar: test_bar.c $(BAR) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@ -lm
+
 clean:
-	rm -f test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_axs5106l test_touch_ui test_tempo_snapshot
+	rm -f test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_axs5106l test_touch_ui test_tempo_snapshot test_bar
