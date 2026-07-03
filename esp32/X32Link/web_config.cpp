@@ -128,6 +128,10 @@ form .row:nth-child(2){animation-delay:.10s}form .row:nth-child(3){animation-del
 <div class="fld"><span class="pre">BEATS</span><input type="number" name="quantum_beats" value="%QUANTUM%" min="1" max="16" step="1" inputmode="numeric"></div>
 </div>
 <div class="row">
+<div class="cap"><label>MIDI Clock Out</label><span class="hint">Link&rarr;USB 0xF8 &middot; restart to apply</span></div>
+<div class="fld"><span class="pre">24PPQN</span><input type="number" name="midi_clock_out" value="%MCKOUT%" min="0" max="1" step="1" inputmode="numeric"></div>
+</div>
+<div class="row">
 <div class="cap"><label>Mixer IP</label><span class="hint">on this network</span></div>
 <div class="fld"><span class="pre">HOST</span><input type="text" name="mixer_ip" value="%IP%" inputmode="decimal" autocomplete="off"></div>
 </div>
@@ -216,6 +220,7 @@ static String build_html() {
     h.replace("%IP%",    g_config.mixer_ip);
     h.replace("%SLOT%",  String(g_config.fx_slot));
     h.replace("%QUANTUM%", String(g_config.quantum_beats));
+    h.replace("%MCKOUT%", String(g_config.midi_clock_out_enable));
     h.replace("%SRC%",   String(g_config.input_source));
     h.replace("%SSID%",  g_config.wifi_ssid);
     h.replace("%BPM%",   bpm);
@@ -289,6 +294,9 @@ static void handle_save() {
 
     int src = server.arg("input_source").toInt();
     if (src == 0 || src == 1) cfg.input_source = src;
+
+    int mck = server.arg("midi_clock_out").toInt();  // LNK-027
+    if (mck == 0 || mck == 1) cfg.midi_clock_out_enable = mck;
 
     if (config_validate(&cfg)) {
         g_config = cfg;

@@ -24,6 +24,7 @@
 #define DEFAULT_FDR_ENABLE     0    // FaderDisp off on non-FDR firmware
 #define DEFAULT_FDR_CHAN_COUNT 32
 #define DEFAULT_QUANTUM_BEATS  4    // bar-quantized phase: beats per bar
+#define DEFAULT_MIDI_CLOCK_OUT_ENABLE 0  // LNK-027: MIDI clock OUT off by default
 
 // Board profile (LNK-025) — the Waveshare ESP32-S3-Touch-LCD-1.47 carries the
 // 1.47" LCD, so its single board flag implies the on-device display UI: one

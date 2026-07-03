@@ -38,6 +38,13 @@ float    tempo_source_phase(float quantum);
 // True once tempo_source_phase() can return a real value.
 bool     tempo_source_phase_valid(void);
 
+// Monotonic absolute beat position of the active source, or -1.0 when phase
+// isn't valid yet. Unlike tempo_source_phase() this does NOT wrap at the
+// quantum — it grows continuously with the timeline, which is what a clock
+// generator needs to quantize to a 1/24-beat tick grid (LNK-027). Link: the
+// session's beats-now; MIDI: pulse_count / 24.
+double   tempo_source_beats_now(void);
+
 float    tempo_source_threshold(void); // per-input change threshold
 uint32_t tempo_source_poll_ms(void);   // per-input poll interval
 
