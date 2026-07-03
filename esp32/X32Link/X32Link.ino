@@ -157,7 +157,7 @@ static void led_task(void*) {
 }
 
 static void bpm_task(void*) {
-    bpm_publisher_init(tempo_source_threshold(), LINK_SEND_INTERVAL_MS, LINK_REFRESH_BARS);
+    bpm_publisher_init(tempo_source_threshold(), LINK_SEND_INTERVAL_MS, LINK_REFRESH_BARS, g_config.quantum_beats);
     float pub_bpm = LINK_DEFAULT_BPM;   // last published BPM (updates on d.send)
     for (;;) {
         tempo_source_poll();
