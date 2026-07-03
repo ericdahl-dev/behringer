@@ -8,6 +8,7 @@
 #include "link_measurement_io.h"
 #include "link_measurement.h"
 #include "link_protocol.h"
+#include "link_phase.h"     // LNK-026: link_phase_timeline_epoch_reset()
 #include <WiFiUdp.h>
 #include "esp_timer.h"
 
@@ -43,6 +44,14 @@ static const int      MAX_TIMEOUTS = 5;      // 5 * 50ms = 250ms -> abandon atte
 // committed xform untouched, so a good measurement keeps phase valid meanwhile.
 static const int64_t REMEASURE_INTERVAL_US = 2000000;  // 2 s
 static int64_t       s_next_measure_us = 0;
+
+// LNK-026: last gossiped time_origin, to spot a re-origin (host restarting
+// transport) — see check_epoch_reset().
+static bool    s_have_last_origin   = false;
+static int64_t s_last_time_origin_us = 0;
+static uint32_t s_epoch_resets       = 0;  // diagnostic count (LNK-026)
+
+uint32_t link_measurement_io_epoch_resets(void) { return s_epoch_resets; }
 
 // esp_timer_get_time(), not millis()/micros() — see LNK-019 for why
 // microsecond precision matters specifically in this path.
@@ -117,6 +126,27 @@ static void check_trigger() {
     }
 }
 
+// LNK-026: a Link host restarting transport re-origins the session with a fresh
+// ghost-time epoch, so the gossiped time_origin jumps backward. The committed
+// GhostXForm was measured against the OLD epoch, so phase computed from the new
+// origin + that stale xform reads as garbage until the next periodic re-measure
+// (~2s later) — and validity never drops, so the wheel renders the garbage. Spot
+// the jump, drop the committed xform (phase_valid -> false, UI shows "syncing"),
+// and force a fresh measurement against the new epoch this poll.
+static void check_epoch_reset() {
+    LinkTimeline tl;
+    if (!link_proto_timeline(&tl)) return;
+    if (s_have_last_origin &&
+        link_phase_timeline_epoch_reset(s_last_time_origin_us, tl.time_origin_us)) {
+        link_measurement_reset();   // invalidate committed xform -> phase_valid false
+        s_have_ref        = false;  // make check_trigger() start a fresh attempt
+        s_next_measure_us = 0;      // re-measure now, don't wait REMEASURE_INTERVAL_US
+        s_epoch_resets++;           // diagnostic (LNK-026)
+    }
+    s_last_time_origin_us = tl.time_origin_us;
+    s_have_last_origin    = true;
+}
+
 void link_measurement_io_begin() {
     s_udp.stop();
     s_socket_open = s_udp.begin((uint16_t)0) != 0;
@@ -124,12 +154,14 @@ void link_measurement_io_begin() {
     s_have_ref = false;
     s_have_prev_ghost = false;
     s_consecutive_timeouts = 0;
+    s_have_last_origin = false;
     link_measurement_reset();
 }
 
 void link_measurement_io_poll() {
     if (!s_socket_open) return;
 
+    check_epoch_reset();
     check_trigger();
 
     if (!link_measurement_active()) return;

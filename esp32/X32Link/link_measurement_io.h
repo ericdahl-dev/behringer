@@ -16,3 +16,9 @@ void link_measurement_io_begin();
 // 5-consecutive-timeout (250ms) failure path. Call every loop tick,
 // alongside link_listener_poll()/tick().
 void link_measurement_io_poll();
+
+// LNK-026 diagnostic (temporary): count of detected timeline epoch resets
+// (transport re-origins) that invalidated the committed GhostXForm. Surfaced on
+// /phasedbg so the fix can be verified even when WiFi drops during the re-origin.
+#include <stdint.h>
+uint32_t link_measurement_io_epoch_resets(void);
