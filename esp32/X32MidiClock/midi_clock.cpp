@@ -7,6 +7,11 @@
 
 USBMIDI MidiUSB("X32MidiClock");
 
+// LNK-027: track whether the USBMIDI endpoint is already up, so the OUT path
+// (Link mode) and the IN path (MIDI mode) can each call begin() without a
+// double-begin.
+static bool s_usb_begun = false;
+
 static volatile uint32_t s_ring[RING_SIZE];
 static volatile uint32_t s_head        = 0;
 static volatile uint32_t s_pulse_count = 0;
@@ -34,8 +39,21 @@ static void midi_poll_task(void*) {
 }
 
 void midi_clock_init() {
-    MidiUSB.begin();
+    midi_clock_usb_begin();
     xTaskCreatePinnedToCore(midi_poll_task, "midi_poll", 2048, NULL, 5, NULL, 1);
+}
+
+// LNK-027 MIDI clock OUT helpers (shared USBMIDI endpoint).
+void midi_clock_usb_begin() {
+    if (s_usb_begun) return;
+    MidiUSB.begin();
+    s_usb_begun = true;
+}
+
+void midi_clock_send_f8() {
+    // System real-time Timing Clock (0xF8): USB-MIDI CIN 0x0F, cable 0.
+    midiEventPacket_t pkt = {0x0F, 0xF8, 0x00, 0x00};
+    MidiUSB.writePacket(&pkt);
 }
 
 uint32_t midi_clock_pulse_count() {
