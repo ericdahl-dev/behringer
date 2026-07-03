@@ -1,7 +1,7 @@
 #include "unity.h"
 #include "bpm_publisher.h"
 
-void setUp(void)    { bpm_publisher_init(0.5f, 500, 1); }
+void setUp(void)    { bpm_publisher_init(0.5f, 500, 1, 4); }  // quantum 4 = old 4/4 refresh timing
 void tearDown(void) {}
 
 void test_change_past_threshold_sends(void) {
