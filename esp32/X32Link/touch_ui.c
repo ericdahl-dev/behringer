@@ -1,6 +1,7 @@
 #include "touch_ui.h"
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 int ui_hit(const ui_rect_t *r, int n, int x, int y) {
     if (!r) return -1;
@@ -20,4 +21,11 @@ void ui_bpm_str(char *out, size_t n, float bpm) {
     } else {
         snprintf(out, n, "%.1f", bpm);
     }
+}
+
+float ui_phase_angle(float phase, float quantum) {
+    if (quantum <= 0.0f) return 0.0f;
+    float frac = fmodf(phase, quantum);
+    if (frac < 0.0f) frac += quantum;
+    return frac / quantum * 360.0f;
 }
