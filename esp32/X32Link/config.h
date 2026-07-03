@@ -22,3 +22,4 @@
 #define DEFAULT_INPUT_SOURCE 0    // TEMPO_SRC_LINK
 #define DEFAULT_FDR_ENABLE     0    // FaderDisp off on non-FDR firmware
 #define DEFAULT_FDR_CHAN_COUNT 32
+#define DEFAULT_QUANTUM_BEATS  4    // bar-quantized phase: beats per bar

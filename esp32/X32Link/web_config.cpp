@@ -1,12 +1,28 @@
 #include "web_config.h"
 #include "app_config.h"
+#include "web_status_json.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 
 extern AppConfig g_config;
 extern void config_save(const AppConfig*);
-extern volatile float g_current_bpm;  // shared by both firmwares — load-time snapshot
+extern volatile float g_current_bpm;    // shared by both firmwares — load-time snapshot
+// Phase snapshot for the web beat dot (LNK-022) — same "shared global,
+// firmware-specific writer" pattern as g_current_bpm above, and for the
+// same reason: this file is symlinked into X32MidiClock (see
+// X32MidiClock/web_config.cpp), which has no tempo_source.h/.cpp (that's
+// an X32Link-only Link-vs-MIDI selection layer — X32MidiClock is
+// MIDI-only and talks to midi_bpm_calc.c directly). Calling
+// tempo_source_phase()/tempo_source_phase_valid() from here would compile
+// for X32Link but fail for X32MidiClock. Instead each firmware's own .ino
+// refreshes these globals from whatever its real phase source is —
+// X32Link.ino's bpm_task via tempo_source_phase()/_valid(), X32MidiClock's
+// bpm_task via midi_phase_calc()/midi_phase_valid() — and this file only
+// ever reads them. g_current_phase mirrors tempo_source_phase()'s
+// contract: -1.0f means "no reading yet", check g_phase_valid first.
+extern volatile float g_current_phase;
+extern volatile bool  g_phase_valid;
 
 static WebServer  server(80);
 static DNSServer  s_dns;
@@ -119,6 +135,10 @@ form .row:nth-child(2){animation-delay:.10s}form .row:nth-child(3){animation-del
 <div class="slots" id="slots"></div>
 </div>
 <div class="row">
+<div class="cap"><label>Bar Quantum</label><span class="hint">beats per bar &middot; 1&ndash;16</span></div>
+<div class="fld"><span class="pre">BEATS</span><input type="number" name="quantum_beats" value="%QUANTUM%" min="1" max="16" step="1" inputmode="numeric"></div>
+</div>
+<div class="row">
 <div class="cap"><label>Mixer IP</label><span class="hint">on this network</span></div>
 <div class="fld"><span class="pre">HOST</span><input type="text" name="mixer_ip" value="%IP%" inputmode="decimal" autocomplete="off"></div>
 </div>
@@ -154,12 +174,46 @@ if(curSlot>maxSlot){curSlot=maxSlot;hSlot.value=maxSlot}renderSlots()});
 renderSlots();
 var bpmEl=document.getElementById('bpm'),beatEl=document.getElementById('beat');
 var seedBpm=parseFloat(bpmEl.textContent)||0,beatTimer=null,shownBpm=-1;
+// Free-running fallback blink (pre-LNK-022 behaviour) — used whenever the
+// server says phase isn't valid yet (sync gap / no source). Unchanged.
 function setBeat(bpm){if(beatTimer){clearInterval(beatTimer);beatTimer=null}
 if(bpm>0){beatTimer=setInterval(function(){beatEl.classList.add('on');setTimeout(function(){beatEl.classList.remove('on')},90)},60000/bpm)}}
+function flashBeat(){beatEl.classList.add('on');setTimeout(function(){beatEl.classList.remove('on')},90)}
+// Phase-locked beat dot (LNK-022): poll-correct + client-side interpolate.
+// /status is 1Hz (intentionally — see ticket notes), too coarse to *drive*
+// a smooth dot directly. Each poll that reports valid:true snaps a local
+// anchor {phase,pollMs,bpm,quantum}; a requestAnimationFrame loop
+// extrapolates phase_now between polls and flashes on each wrap
+// (phase_now < prevPhase), same wrap-detection shape as the LED's
+// led_phase_should_flash (LNK-021), just reimplemented client-side since
+// there's no host-JS test harness here (see web_status_json.c/.h for the
+// part of this ticket that *is* host-tested). Visual (size/color/glow) is
+// untouched — only the timing source changes.
+var phaseLocked=false,anchor=null,prevPhase=-1,rafId=null;
+function phaseTick(){
+if(!anchor){rafId=null;return}
+var elapsedS=(Date.now()-anchor.pollMs)/1000;
+var phase=(anchor.phase+elapsedS*anchor.bpm/60)%anchor.quantum;
+if(phase<0)phase+=anchor.quantum;
+if(prevPhase>=0&&phase<prevPhase)flashBeat();
+prevPhase=phase;
+rafId=requestAnimationFrame(phaseTick);
+}
 function showBpm(bpm){if(Math.abs(bpm-shownBpm)<0.05)return;shownBpm=bpm;
-bpmEl.textContent=bpm>0?bpm.toFixed(1):'--.-';setBeat(bpm)}
+bpmEl.textContent=bpm>0?bpm.toFixed(1):'--.-';if(!phaseLocked)setBeat(bpm)}
 function poll(){fetch('/status',{cache:'no-store'}).then(function(r){return r.json()})
-.then(function(d){if(typeof d.bpm==='number')showBpm(d.bpm)}).catch(function(){})}
+.then(function(d){
+if(typeof d.bpm==='number')showBpm(d.bpm);
+var valid=d.valid===true&&typeof d.phase==='number'&&typeof d.quantum==='number'&&d.quantum>0;
+if(valid){
+anchor={phase:d.phase,pollMs:Date.now(),bpm:d.bpm,quantum:d.quantum};
+if(!phaseLocked){phaseLocked=true;if(beatTimer){clearInterval(beatTimer);beatTimer=null}
+prevPhase=-1;rafId=requestAnimationFrame(phaseTick)}
+}else if(phaseLocked){
+phaseLocked=false;if(rafId){cancelAnimationFrame(rafId);rafId=null}anchor=null;prevPhase=-1;
+setBeat(shownBpm);
+}
+}).catch(function(){})}
 var t=0,boot=setInterval(function(){bpmEl.textContent=(Math.random()*200+40).toFixed(1);
 if(++t>6){clearInterval(boot);showBpm(seedBpm);poll();setInterval(poll,1000)}},70);
 </script></body></html>)HTML";
@@ -171,6 +225,7 @@ static String build_html() {
     h.replace("%MODEL%", String(g_config.model));
     h.replace("%IP%",    g_config.mixer_ip);
     h.replace("%SLOT%",  String(g_config.fx_slot));
+    h.replace("%QUANTUM%", String(g_config.quantum_beats));
     h.replace("%SRC%",   String(g_config.input_source));
     h.replace("%SSID%",  g_config.wifi_ssid);
     h.replace("%BPM%",   bpm);
@@ -181,11 +236,18 @@ static void handle_root() {
     server.send(200, "text/html", build_html());
 }
 
-// Live tempo for the panel's 7-seg readout. Shared-safe: only g_current_bpm
-// (both firmwares define it) — no Link-only symbols, so X32MidiClock compiles.
+// Live tempo for the panel's 7-seg readout, plus phase/valid/quantum for
+// the web beat dot (LNK-022) — same data the LED (LNK-021) and touch wheel
+// (LNK-015) already drive off, just surfaced over HTTP so the JS can
+// poll-correct + client-side-interpolate instead of free-running off bpm
+// alone. quantum is g_config.quantum_beats (bar-quantized, matching the
+// touch UI's phase wheel, not the LED's per-beat 1.0f quantum). Reads the
+// g_current_phase/g_phase_valid globals (see extern decls above) rather
+// than calling tempo_source_phase()/_valid() directly — shared-safe, same
+// as g_current_bpm, so X32MidiClock still compiles.
 static void handle_status() {
-    char buf[28];
-    snprintf(buf, sizeof(buf), "{\"bpm\":%.1f}", g_current_bpm);
+    char buf[80];
+    web_status_json(buf, sizeof(buf), g_current_bpm, g_current_phase, g_phase_valid, g_config.quantum_beats);
     server.send(200, "application/json", buf);
 }
 
@@ -219,6 +281,12 @@ static void handle_save() {
 
     int slot = server.arg("fx_slot").toInt();
     if (slot >= 1 && slot <= config_model_slot_max(cfg.model)) cfg.fx_slot = slot;
+
+    // No 1-16 pre-check here — config_validate() (LNK-019) already enforces
+    // that range as the single source of truth; an out-of-range post just
+    // fails validation below (400, config untouched) same as a bad
+    // mixer_ip, rather than silently clamping or duplicating the check.
+    cfg.quantum_beats = server.arg("quantum_beats").toInt();
 
     String ssid = server.arg("wifi_ssid");
     if (ssid.length() > 0 && ssid.length() < (int)sizeof(cfg.wifi_ssid))

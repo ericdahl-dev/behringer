@@ -15,3 +15,4 @@
 #define DEFAULT_INPUT_SOURCE 0
 #define DEFAULT_FDR_ENABLE     1
 #define DEFAULT_FDR_CHAN_COUNT 32   // X32; set 16 for XR18
+#define DEFAULT_QUANTUM_BEATS  4    // bar-quantized phase: beats per bar (unused by this firmware)
