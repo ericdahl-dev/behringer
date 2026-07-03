@@ -1,28 +1,17 @@
 #include "web_config.h"
 #include "app_config.h"
 #include "web_status_json.h"
+#include "tempo_snapshot.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 
 extern AppConfig g_config;
 extern void config_save(const AppConfig*);
-extern volatile float g_current_bpm;    // shared by both firmwares — load-time snapshot
-// Phase snapshot for the web beat dot (LNK-022) — same "shared global,
-// firmware-specific writer" pattern as g_current_bpm above, and for the
-// same reason: this file is symlinked into X32MidiClock (see
-// X32MidiClock/web_config.cpp), which has no tempo_source.h/.cpp (that's
-// an X32Link-only Link-vs-MIDI selection layer — X32MidiClock is
-// MIDI-only and talks to midi_bpm_calc.c directly). Calling
-// tempo_source_phase()/tempo_source_phase_valid() from here would compile
-// for X32Link but fail for X32MidiClock. Instead each firmware's own .ino
-// refreshes these globals from whatever its real phase source is —
-// X32Link.ino's bpm_task via tempo_source_phase()/_valid(), X32MidiClock's
-// bpm_task via midi_phase_calc()/midi_phase_valid() — and this file only
-// ever reads them. g_current_phase mirrors tempo_source_phase()'s
-// contract: -1.0f means "no reading yet", check g_phase_valid first.
-extern volatile float g_current_phase;
-extern volatile bool  g_phase_valid;
+// Live tempo comes from the tempo_snapshot seam (ARC-001): one atomic read
+// yields a torn-free {bpm,phase,valid,quantum}. Symlink-safe — both firmwares'
+// bpm_tasks publish into it, so this file needs no firmware-specific tempo_source
+// calls (the reason the old shared globals existed).
 
 static WebServer  server(80);
 static DNSServer  s_dns;
@@ -220,8 +209,9 @@ if(++t>6){clearInterval(boot);showBpm(seedBpm);poll();setInterval(poll,1000)}},7
 
 static String build_html() {
     String h(HTML_TMPL);
+    TempoSnapshot ts; tempo_snapshot_read(&ts);
     char bpm[8];
-    snprintf(bpm, sizeof(bpm), "%.1f", g_current_bpm);
+    snprintf(bpm, sizeof(bpm), "%.1f", ts.bpm);
     h.replace("%MODEL%", String(g_config.model));
     h.replace("%IP%",    g_config.mixer_ip);
     h.replace("%SLOT%",  String(g_config.fx_slot));
@@ -246,8 +236,9 @@ static void handle_root() {
 // than calling tempo_source_phase()/_valid() directly — shared-safe, same
 // as g_current_bpm, so X32MidiClock still compiles.
 static void handle_status() {
+    TempoSnapshot ts; tempo_snapshot_read(&ts);
     char buf[80];
-    web_status_json(buf, sizeof(buf), g_current_bpm, g_current_phase, g_phase_valid, g_config.quantum_beats);
+    web_status_json(buf, sizeof(buf), ts.bpm, ts.phase, ts.valid, ts.quantum);
     server.send(200, "application/json", buf);
 }
 

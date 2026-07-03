@@ -9,28 +9,26 @@
 #include "bpm_tracker.h"
 #include "osc_sender.h"
 #include "web_config.h"
+#include "tempo_snapshot.h"  // ARC-001: atomic {bpm,phase,valid,quantum} read path
 
 #define LED_PIN      48
 #define LED_FLASH_MS 30
 
 AppConfig g_config;
-volatile float g_current_bpm = MCK_DEFAULT_BPM;
 
-// Phase snapshot for the web beat dot (LNK-022) — read by web_config.cpp's
-// (symlinked from X32Link/) handle_status(). This firmware is MIDI-only —
-// no tempo_source.h abstraction here — so it talks to midi_bpm_calc.c's
-// midi_phase_calc()/midi_phase_valid() directly, same primitives
-// X32Link's tempo_source.cpp uses internally for its own MIDI branch.
-volatile float g_current_phase = -1.0f;
-volatile bool  g_phase_valid   = false;
+// Live tempo goes through the tempo_snapshot seam (ARC-001) — bpm_task publishes
+// a coherent {bpm,phase,valid,quantum} that web_config.cpp reads atomically. The
+// old g_current_bpm / g_current_phase / g_phase_valid globals are gone (and this
+// firmware previously had NO lock on them at all).
 
 static void bpm_task(void*) {
     uint32_t last_send_ms = 0;
     int      beat_count   = 0;
+    float    pub_bpm      = MCK_DEFAULT_BPM;
     for (;;) {
         uint32_t pulses = midi_clock_pulse_count();
-        g_phase_valid   = midi_phase_valid(pulses, g_config.quantum_beats);
-        g_current_phase = g_phase_valid ? midi_phase_calc(pulses, g_config.quantum_beats) : -1.0f;
+        bool  valid = midi_phase_valid(pulses, g_config.quantum_beats);
+        float phase = valid ? midi_phase_calc(pulses, g_config.quantum_beats) : -1.0f;
 
         bool bar_tick = false;
         if (midi_clock_beat_flag()) {
@@ -50,9 +48,13 @@ static void bpm_task(void*) {
         if ((changed || refresh) && (now - last_send_ms) >= MCK_SEND_INTERVAL_MS) {
             osc_send_bpm(bpm);
             last_send_ms = now;
-            g_current_bpm = bpm;
+            pub_bpm = bpm;
             Serial0.printf("[X32MidiClock] BPM %.2f → OSC sent%s\n", bpm, changed ? "" : " (refresh)");
         }
+
+        // One coherent snapshot per tick (ARC-001) — readers take it atomically.
+        tempo_snapshot_publish(pub_bpm, phase, valid, g_config.quantum_beats);
+
         vTaskDelay(pdMS_TO_TICKS(MCK_POLL_MS));
     }
 }
@@ -136,8 +138,9 @@ void loop() {
         osc_sender_begin();
     }
     web_config_handle();
+    TempoSnapshot ts; tempo_snapshot_read(&ts);
     Serial0.printf("[X32MidiClock] bpm:%.2f pulses:%lu heap:%lu\n",
-                   g_current_bpm,
+                   ts.bpm,
                    (unsigned long)midi_clock_pulse_count(),
                    (unsigned long)ESP.getFreeHeap());
     delay(5000);
