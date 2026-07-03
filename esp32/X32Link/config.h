@@ -10,7 +10,8 @@
 // USB MIDI clock input — per-input knobs (used when input_source = MIDI)
 #define MCK_BPM_THRESHOLD    1.5f     // MIDI jitter is higher than Link
 #define MCK_POLL_MS          10
-#define MCK_CLOCK_WINDOW     24       // pulses to average (1 beat = 24 PPQN)
+#define MCK_PPQN             24       // MIDI clock pulses per beat (protocol constant; drives the per-beat flag)
+#define MCK_CLOCK_WINDOW     48       // pulses to average for BPM (2 beats) — smooths 1ms-poll timestamp jitter
 #define MCK_CLOCK_TIMEOUT_MS 2000     // no pulse for this long → clock stopped
 
 // First-boot defaults — overridden after first web config save
