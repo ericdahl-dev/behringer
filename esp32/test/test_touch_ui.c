@@ -18,8 +18,18 @@ void test_ui_hit(void) {
     TEST_ASSERT_EQUAL_INT(-1, ui_hit(r, 0, 5, 5));
 }
 
+// Task 2: ui_bpm_str — "%.1f", or "--.-" when bpm <= 0.
+void test_ui_bpm_str(void) {
+    char b[8];
+    ui_bpm_str(b, sizeof b, 120.4f); TEST_ASSERT_EQUAL_STRING("120.4", b);
+    ui_bpm_str(b, sizeof b, 0.0f);   TEST_ASSERT_EQUAL_STRING("--.-", b);
+    ui_bpm_str(b, sizeof b, -5.0f);  TEST_ASSERT_EQUAL_STRING("--.-", b);
+    ui_bpm_str(b, sizeof b, 60.0f);  TEST_ASSERT_EQUAL_STRING("60.0", b);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_hit);
+    RUN_TEST(test_ui_bpm_str);
     return UNITY_END();
 }

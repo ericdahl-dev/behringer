@@ -1,4 +1,6 @@
 #include "touch_ui.h"
+#include <stdio.h>
+#include <string.h>
 
 int ui_hit(const ui_rect_t *r, int n, int x, int y) {
     if (!r) return -1;
@@ -9,4 +11,13 @@ int ui_hit(const ui_rect_t *r, int n, int x, int y) {
         }
     }
     return -1;
+}
+
+void ui_bpm_str(char *out, size_t n, float bpm) {
+    if (!out || n == 0) return;
+    if (bpm <= 0.0f) {
+        snprintf(out, n, "--.-");
+    } else {
+        snprintf(out, n, "%.1f", bpm);
+    }
 }
