@@ -87,34 +87,18 @@ void touch_display_begin(void) {
 }
 
 void touch_display_tick(void) {
+    // LNK-014 scope: poll the controller and echo raw coordinates to Serial on
+    // contact. No on-screen touch UI here — drawing touch state on the panel
+    // (and the raw->screen coordinate mapping, e.g. the Y flip) is LNK-015's
+    // job. The static boot splash stays on screen.
     uint32_t now = millis();
-    if (now - s_last_print_ms < 150) return;   // DEBUG: always echo read status
+    if (now - s_last_print_ms < 150) return;
     s_last_print_ms = now;
 
     axs_touch_t t;
-    bool ok = axs_read(&t);
-    s_lcd.fillRect(0, 168, 172, 44, TFT_BLACK);
-    s_lcd.setTextSize(2);
-    s_lcd.setCursor(8, 172);
-    if (!ok) {
-        s_lcd.setTextColor(TFT_RED, TFT_BLACK);
-        s_lcd.print("I2C ERR");
-        Serial.println("[td] I2C ERR");
-        return;
-    }
-    int x = t.points_len ? t.points[0].x : 0;
-    int y = t.points_len ? t.points[0].y : 0;
-    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-    s_lcd.printf("n%d", t.count);
-    s_lcd.setCursor(8, 190);
-    s_lcd.printf("%d,%d", x, y);
-    Serial.printf("[td] n=%u x=%d y=%d\n", t.count, x, y);
-    if (t.points_len) {
-        int dx = x < 0 ? 0 : (x > 171 ? 171 : x);
-        int dy = y < 0 ? 0 : (y > 319 ? 319 : y);
-        dy = 319 - dy;   // raw touch Y runs opposite the setRotation(4) display Y
-        s_lcd.fillCircle(dx, dy, 5, TFT_CYAN);   // dot follows finger (both axes)
-    }
+    if (!axs_read(&t)) return;                 // I2C gap / no data: stay quiet
+    if (t.points_len)
+        Serial.printf("[td] n=%u x=%d y=%d\n", t.count, t.points[0].x, t.points[0].y);
 }
 
 #endif // HAS_TOUCH_DISPLAY
