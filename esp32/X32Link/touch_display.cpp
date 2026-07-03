@@ -87,10 +87,12 @@ static bool     s_wheel_valid_shown = false;
 static uint32_t s_last_update_ms = 0;
 
 // Tap targets (screen coords after the rotation-4 map). Task 9: nav only.
-static const ui_rect_t STATUS_SET_RECT   = {116, 4, 52, 28};   // "SET" on status
-static const ui_rect_t SETTINGS_BACK_RECT = {8, 280, 90, 34};  // "< back" on settings
+static const ui_rect_t STATUS_SET_RECT     = {116, 4, 52, 28};   // "SET" on status
+static const ui_rect_t SETTINGS_BACK_RECT  = {8, 4, 40, 28};     // "<" top-left
+static const ui_rect_t SETTINGS_WRITE_RECT = {8, 272, 156, 40};  // Write & Reboot
 
-#define ACT_BACK 100   // settings tap-table action id (outside the UI_F_* range)
+#define ACT_BACK  100  // settings tap-table action ids (outside the UI_F_* range)
+#define ACT_WRITE 101
 
 // Settings edit state (Task 10): a working copy of g_config that taps mutate,
 // plus the current settings screen's interactive rect table (rebuilt each draw).
@@ -180,9 +182,18 @@ static void draw_settings(void) {
     s_lcd.fillScreen(TFT_BLACK);
     s_set_n = 0;
 
+    // back "<" (top-left) + title
+    s_lcd.drawRoundRect(SETTINGS_BACK_RECT.x, SETTINGS_BACK_RECT.y,
+                        SETTINGS_BACK_RECT.w, SETTINGS_BACK_RECT.h, 4, TFT_GREEN);
+    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    s_lcd.setTextSize(2);
+    s_lcd.setCursor(SETTINGS_BACK_RECT.x + 13, SETTINGS_BACK_RECT.y + 7);
+    s_lcd.print("<");
+    set_add(SETTINGS_BACK_RECT, ACT_BACK);
+
     s_lcd.setTextColor(TFT_WHITE, TFT_BLACK);
     s_lcd.setTextSize(2);
-    s_lcd.setCursor(8, 6);
+    s_lcd.setCursor(58, 8);
     s_lcd.print("SETTINGS");
 
     set_label(32, "SOURCE");
@@ -210,13 +221,14 @@ static void draw_settings(void) {
     s_lcd.printf("%d", s_working.quantum_beats);
     set_seg(rect(124, 222, 34, 30), "+", false, UI_F_QUANTUM_INC);
 
-    s_lcd.drawRoundRect(SETTINGS_BACK_RECT.x, SETTINGS_BACK_RECT.y,
-                        SETTINGS_BACK_RECT.w, SETTINGS_BACK_RECT.h, 5, TFT_GREEN);
-    s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    // Write & Reboot (Task 11): persist s_working + restart, like handle_save().
+    s_lcd.fillRoundRect(SETTINGS_WRITE_RECT.x, SETTINGS_WRITE_RECT.y,
+                        SETTINGS_WRITE_RECT.w, SETTINGS_WRITE_RECT.h, 6, TFT_DARKGREEN);
+    s_lcd.setTextColor(TFT_BLACK, TFT_DARKGREEN);
     s_lcd.setTextSize(2);
-    s_lcd.setCursor(SETTINGS_BACK_RECT.x + 12, SETTINGS_BACK_RECT.y + 9);
-    s_lcd.print("< back");
-    set_add(SETTINGS_BACK_RECT, ACT_BACK);
+    s_lcd.setCursor(SETTINGS_WRITE_RECT.x + 12, SETTINGS_WRITE_RECT.y + 12);
+    s_lcd.print("SAVE+REBOOT");
+    set_add(SETTINGS_WRITE_RECT, ACT_WRITE);
 }
 
 static void enter_settings(void) {
@@ -336,8 +348,33 @@ void touch_display_tick(void) {
             int i = ui_hit(s_set_rects, s_set_n, x, y);
             if (i >= 0) {
                 int f = s_set_fields[i];
-                if (f == ACT_BACK) { s_screen = SCREEN_STATUS; draw_status(); }
-                else { ui_apply_settings_tap(&s_working, f); draw_settings(); }
+                if (f == ACT_BACK) {
+                    s_screen = SCREEN_STATUS; draw_status();
+                } else if (f == ACT_WRITE) {
+                    // Persist exactly like web_config.cpp's handle_save().
+                    if (config_validate(&s_working)) {
+                        g_config = s_working;
+                        config_save(&g_config);
+                        s_lcd.fillScreen(TFT_BLACK);
+                        s_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+                        s_lcd.setTextSize(2);
+                        s_lcd.setCursor(8, 140);
+                        s_lcd.print("Saved.");
+                        s_lcd.setCursor(8, 170);
+                        s_lcd.print("Rebooting");
+                        delay(700);
+                        ESP.restart();
+                    } else {                       // invalid: flag inline, don't save
+                        s_lcd.fillRect(8, 256, 156, 12, TFT_BLACK);
+                        s_lcd.setTextColor(TFT_RED, TFT_BLACK);
+                        s_lcd.setTextSize(1);
+                        s_lcd.setCursor(8, 256);
+                        s_lcd.print("invalid config - not saved");
+                    }
+                } else {
+                    ui_apply_settings_tap(&s_working, f);
+                    draw_settings();
+                }
             }
         }
     } else if (!touched) {
