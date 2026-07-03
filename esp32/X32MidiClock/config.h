@@ -4,7 +4,8 @@
 #define MCK_BPM_THRESHOLD     1.5f     // ignore jitter smaller than this
 #define MCK_SEND_INTERVAL_MS  500      // minimum ms between OSC sends
 #define MCK_REFRESH_BARS      1        // resend every N bars (4 beats)
-#define MCK_CLOCK_WINDOW      24       // pulses to average (1 beat = 24 PPQN)
+#define MCK_PPQN              24       // MIDI clock pulses per beat (protocol constant; drives the per-beat flag)
+#define MCK_CLOCK_WINDOW      48       // pulses to average for BPM (2 beats) — smooths 1ms-poll timestamp jitter
 #define MCK_CLOCK_TIMEOUT_MS  2000     // stop sending OSC if no pulse for this long
 #define MCK_POLL_MS           10       // BPM task poll interval
 
