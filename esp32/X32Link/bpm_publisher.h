@@ -15,7 +15,7 @@ typedef struct {
 
 /* Configure the policy. threshold = min BPM change to trigger a send;
  * send_interval_ms = floor between sends; refresh_bars = resend every N bars. */
-void bpm_publisher_init(float threshold, uint32_t send_interval_ms, int refresh_bars);
+void bpm_publisher_init(float threshold, uint32_t send_interval_ms, int refresh_bars, int quantum);
 
 /* Feed the latest reading each tick. bpm<=0 means "no signal" (never sends);
  * active gates the periodic refresh (peers present / pulses flowing). */

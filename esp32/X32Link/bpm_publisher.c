@@ -4,20 +4,23 @@
 // host-testable. No Arduino deps — the caller passes the clock in.
 
 #include "bpm_publisher.h"
+#include "bar.h"
 #include <math.h>
 
 static float    s_tracked;
 static float    s_threshold;
 static uint32_t s_send_interval;
 static int      s_refresh_bars;
+static int      s_quantum;
 static uint32_t s_last_send;
 static uint32_t s_last_bar;
 
-void bpm_publisher_init(float threshold, uint32_t send_interval_ms, int refresh_bars) {
+void bpm_publisher_init(float threshold, uint32_t send_interval_ms, int refresh_bars, int quantum) {
     s_tracked       = 0.0f;
     s_threshold     = threshold;
     s_send_interval = send_interval_ms;
     s_refresh_bars  = refresh_bars;
+    s_quantum       = quantum;
     s_last_send     = 0;
     s_last_bar      = 0;
 }
@@ -30,7 +33,7 @@ PublishDecision bpm_publisher_step(float bpm, bool active, uint32_t now_ms) {
 
     bool refresh = bpm > 0.0f && active &&
                    (uint32_t)(now_ms - s_last_bar) >=
-                       (uint32_t)(4 * s_refresh_bars * 60000.0f / bpm);
+                       (uint32_t)bar_ms(bpm, s_quantum, s_refresh_bars);
 
     if ((changed || refresh) && (uint32_t)(now_ms - s_last_send) >= s_send_interval) {
         d.send      = true;
