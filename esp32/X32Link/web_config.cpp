@@ -279,8 +279,9 @@ static void send_result(int code, const char* title, const char* body) {
 static void handle_save() {
     AppConfig cfg = g_config;
 
-    int model = server.arg("model").toInt();
-    if (model == MODEL_XR18 || model == MODEL_X32) cfg.model = model;
+    // LNK-032: model + the model→slot clamp go through the shared pure helper,
+    // so a stale fx_slot can't outlive a model change (same rule as the touch UI).
+    config_set_model(&cfg, server.arg("model").toInt());
 
     String ip = server.arg("mixer_ip");
     if (ip.length() > 0 && ip.length() < (int)sizeof(cfg.mixer_ip))

@@ -26,6 +26,14 @@ int config_model_slot_max(int model) {
     return model == MODEL_X32 ? 8 : 4;
 }
 
+void config_set_model(AppConfig* cfg, int model) {
+    if (model != MODEL_XR18 && model != MODEL_X32) return;
+    cfg->model = model;
+    int max = config_model_slot_max(model);
+    if (cfg->fx_slot > max) cfg->fx_slot = max;
+    if (cfg->fx_slot < 1)   cfg->fx_slot = 1;
+}
+
 bool config_validate(const AppConfig* cfg) {
     if (cfg->mixer_ip[0] == '\0') return false;
     if (cfg->fx_slot < 1)                              return false;

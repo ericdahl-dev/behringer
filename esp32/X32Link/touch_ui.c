@@ -67,12 +67,10 @@ void ui_apply_settings_tap(AppConfig *cfg, int field_id) {
             cfg->input_source = 1;
             break;
         case UI_F_MODEL_XR:
-        case UI_F_MODEL_X32: {
-            cfg->model = (field_id == UI_F_MODEL_X32) ? MODEL_X32 : MODEL_XR18;
-            int max = config_model_slot_max(cfg->model);
-            if (cfg->fx_slot > max) cfg->fx_slot = max;
+        case UI_F_MODEL_X32:
+            // LNK-032: model→slot clamp lives in the shared pure helper.
+            config_set_model(cfg, (field_id == UI_F_MODEL_X32) ? MODEL_X32 : MODEL_XR18);
             break;
-        }
         case UI_F_QUANTUM_INC:
             if (cfg->quantum_beats < 16) cfg->quantum_beats++;
             break;
