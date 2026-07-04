@@ -12,6 +12,7 @@
 #include "midi_bpm.h"
 #include "midi_bpm_calc.h"
 #include "midi_clock_out_io.h"  // LNK-027: Link -> USB-MIDI clock OUT
+#include "beat_synth.h"         // LNK-033: pure free-run beat generator
 #include "app_config.h"
 #include <USB.h>
 #include <Arduino.h>
@@ -79,12 +80,9 @@ extern "C" bool tempo_source_active(void) {
 // LED beat: MIDI forwards the clock's beat flag; Link synthesises from BPM.
 extern "C" bool tempo_source_beat(void) {
     if (s_kind == TEMPO_SRC_MIDI) return midi_clock_beat_flag();
-    float bpm = (float)link_listener_bpm();
-    if (bpm <= 0.0f || link_listener_peers() == 0) return false;
-    static uint32_t last = 0;
-    uint32_t now = millis();
-    if (now - last >= (uint32_t)(60000.0f / bpm)) { last = now; return true; }
-    return false;
+    if (link_listener_peers() == 0) return false;
+    static BeatSynth s_beat = {0};                 // LNK-033
+    return beat_synth_step(&s_beat, millis(), (float)link_listener_bpm());
 }
 
 // Phase within the current quantum (bar) — LNK-019. Link: maps our local

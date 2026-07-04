@@ -154,8 +154,36 @@ void test_validate_rejects_negative_quantum_beats(void) {
     TEST_ASSERT_FALSE(config_validate(&cfg));
 }
 
+// LNK-032: config_set_model owns the model→slot dependency for both editors.
+void test_set_model_x32_keeps_valid_high_slot(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model = MODEL_X32; cfg.fx_slot = 8;
+    config_set_model(&cfg, MODEL_X32);
+    TEST_ASSERT_EQUAL_INT(MODEL_X32, cfg.model);
+    TEST_ASSERT_EQUAL_INT(8, cfg.fx_slot);          // 8 is valid on X32
+}
+
+void test_set_model_xr18_clamps_slot_to_max(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model = MODEL_X32; cfg.fx_slot = 8;
+    config_set_model(&cfg, MODEL_XR18);
+    TEST_ASSERT_EQUAL_INT(MODEL_XR18, cfg.model);
+    TEST_ASSERT_EQUAL_INT(4, cfg.fx_slot);          // clamped 8 -> 4
+}
+
+void test_set_model_ignores_invalid_model(void) {
+    AppConfig cfg; config_defaults(&cfg);
+    cfg.model = MODEL_X32; cfg.fx_slot = 7;
+    config_set_model(&cfg, 99);
+    TEST_ASSERT_EQUAL_INT(MODEL_X32, cfg.model);     // unchanged
+    TEST_ASSERT_EQUAL_INT(7, cfg.fx_slot);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_set_model_x32_keeps_valid_high_slot);
+    RUN_TEST(test_set_model_xr18_clamps_slot_to_max);
+    RUN_TEST(test_set_model_ignores_invalid_model);
     RUN_TEST(test_defaults_fdr_chan_is_32);
     RUN_TEST(test_validate_rejects_bad_chan_count);
     RUN_TEST(test_validate_accepts_chan_16);
