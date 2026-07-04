@@ -62,7 +62,10 @@ jobs:
 
       - name: Install ESP32 core + LovyanGFX
         run: |
-          arduino-cli config init --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          # --overwrite: idempotent when a cached ~/.arduino15 already holds a
+          # config (plain `config init` errors "already exists" and, under
+          # `bash -e`, fails the whole step).
+          arduino-cli config init --overwrite --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
           arduino-cli lib install LovyanGFX
