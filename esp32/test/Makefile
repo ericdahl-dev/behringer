@@ -23,10 +23,11 @@ TOUCHUI = ../X32Link/touch_ui.c
 SNAP    = ../X32Link/tempo_snapshot.c
 BAR     = ../X32Link/bar.c
 MIDIOUT = ../X32Link/midi_clock_out.c
+CLOCKTICK = ../X32Link/clock_ticker.c
 
 .PHONY: all clean
 
-all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_touch_ui test_tempo_snapshot test_bar test_midi_clock_out
+all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase test_led_phase test_wifi_down_blink test_app_config test_osc_out test_midi_bpm_calc test_bpm_publisher test_osc_in test_fader_db test_web_status_json test_touch_ui test_tempo_snapshot test_bar test_midi_clock_out test_clock_ticker
 	./test_bpm_tracker
 	./test_link_protocol
 	./test_link_measurement
@@ -44,6 +45,7 @@ all: test_bpm_tracker test_link_protocol test_link_measurement test_link_phase t
 	./test_tempo_snapshot
 	./test_bar
 	./test_midi_clock_out
+	./test_clock_ticker
 	./check_docs.sh
 
 test_bpm_tracker: test_bpm_tracker.c $(TRACKER) $(UNITY)
@@ -97,7 +99,10 @@ test_tempo_snapshot: test_tempo_snapshot.c $(SNAP) $(UNITY)
 test_bar: test_bar.c $(BAR) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
-test_midi_clock_out: test_midi_clock_out.c $(MIDIOUT) $(UNITY)
+test_midi_clock_out: test_midi_clock_out.c $(MIDIOUT) $(CLOCKTICK) $(UNITY)
+	$(CC) $(CFLAGS) $^ -o $@ -lm
+
+test_clock_ticker: test_clock_ticker.c $(CLOCKTICK) $(UNITY)
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
 clean:
