@@ -26,6 +26,12 @@ int  config_model_port(int model);
 int  config_model_slot_max(int model);
 bool config_validate(const AppConfig* cfg);
 
+// LNK-032: the model→fx_slot dependency, shared by the web and touch config
+// editors so the "slot must be ≤ the model's max" rule lives in one host-tested
+// place. Sets model (ignored if not a known model) and clamps fx_slot into
+// [1, config_model_slot_max(model)].
+void config_set_model(AppConfig* cfg, int model);
+
 // NVS-backed persistence (implemented in app_config_nvs.cpp)
 void config_load(AppConfig* cfg);
 void config_save(const AppConfig* cfg);
