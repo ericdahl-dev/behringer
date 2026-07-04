@@ -1,5 +1,7 @@
 # esp32 — Agent Guide
 
+> ⚠️ **Canonical firmware moved to [`ericdahl-dev/link-devices`](https://github.com/ericdahl-dev/link-devices)** (2026-07-04, history preserved; recovery tag `pre-split-2026-07-04`). **Edit there — this `esp32/` copy is frozen pending retirement.** It's kept only so the CLI integration tests (which launch `X32_emulator/`) still build; changes made here will be stranded when the tree is removed. See `docs/plans/2026-07-03-repo-split-runbook.md`.
+
 ## What this firmware is
 
 **Tempo → XR18/X32 FX delay sync.** One ESP32 firmware that reads a musical
