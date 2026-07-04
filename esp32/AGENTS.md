@@ -61,7 +61,8 @@ Notes:
 | `link_listener.*` + `link_protocol.*` | Link adapter; `link_protocol.c` is our own ~100-line gossip parser (the vendored `lib/link/` SDK is **not** used at runtime) |
 | `link_measurement.{h,c}` + `link_measurement_io.cpp` | Link measurement (ping/pong) client; `link_measurement.c` is pure TLV build/parse + median/offset math (host-tested), `link_measurement_io.cpp` is the thin WiFiUDP unicast glue — pinger-only, no PingResponder |
 | `midi_clock.*` · `midi_bpm.*` · `midi_bpm_calc.*` | USB-MIDI adapter; `midi_bpm_calc` is the pure, host-tested BPM math (symlinked from `X32MidiClock/`). `midi_clock` also owns the shared USBMIDI endpoint + `midi_clock_send_f8()` for clock OUT |
-| `midi_clock_out.{h,c}` + `midi_clock_out_io.cpp` | LNK-027 Link→USB-MIDI clock OUT; `midi_clock_out.c` is the pure, host-tested 24-PPQN tick scheduler (quantizes `tempo_source_beats_now()` to `0xF8` ticks), `midi_clock_out_io.cpp` is the 1ms FreeRTOS task + TinyUSB writes |
+| `clock_ticker.{h,c}` | LNK-027/028 shared pure tick engine: quantizes `tempo_source_beats_now()` to N PPQN pulses (phase-locked, re-primes on re-origin) + a `BarReset` tracker that fires once per bar boundary (analog reset pulse). Host-tested |
+| `midi_clock_out.{h,c}` + `midi_clock_out_io.cpp` | LNK-027 Link→USB-MIDI clock OUT; `midi_clock_out.{h,c}` is a thin 24-PPQN adapter over `clock_ticker`, `midi_clock_out_io.cpp` is the 1ms FreeRTOS task + TinyUSB writes |
 | `bpm_tracker.*` | change/threshold detection |
 | `bar.{h,c}` | ARC-003: a bar is `quantum` beats — `bar_beats()` / `bar_ms()`; one place owns beats-per-bar so non-4/4 `quantum` scales refresh/resend (was a hardcoded `4 *`) |
 | `osc_out.*` / `osc_sender.*` | OSC packet build / UDP send to the mixer |
