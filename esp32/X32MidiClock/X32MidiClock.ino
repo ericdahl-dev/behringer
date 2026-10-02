@@ -112,7 +112,7 @@ void setup() {
                    g_config.fx_slot, g_config.mixer_ip,
                    config_model_port(g_config.model));
 
-    // USB MIDI must be initialised before WiFi to ensure USB enumeration is fast
+    // USB MIDI must be initialized before WiFi to ensure USB enumeration is fast
     // Device name is set in midi_clock.cpp via USBMIDI constructor
     USB.manufacturerName("X32Link");
     midi_clock_init();  // calls MidiUSB.begin() + spawns poll task

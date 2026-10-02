@@ -99,7 +99,7 @@ final class RingoutControllerTests: XCTestCase {
         _ = ctrl.step(geqLevels: quiet, baseline: baseline)  // raise
 
         // Inject a narrow spike on par 10 (index 9).
-        // With narrowSkip=1, narrowSpan=1: neighbours are at ±2, which exist.
+        // With narrowSkip=1, narrowSpan=1: neighbors are at ±2, which exist.
         let spike = spikedLevels(at: 9, spike: -10.0, floor: -80.0)
 
         var action: RingoutAction = .hold

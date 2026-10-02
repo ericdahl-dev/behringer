@@ -3,7 +3,7 @@
 
 /* Log-frequency interpolation of the 31 ISO 1/3-octave GEQ anchors
  * (TOAST_GEQ_BIN ↔ ISO centers), 1 kHz pinned to bin 56. Off-anchor bins are
- * modelled, not measured — verify with a console sweep via --rta-probe. */
+ * modeled, not measured — verify with a console sweep via --rta-probe. */
 const float RTA_BIN_FREQ[RTA_BIN_COUNT] = {
         20.0f,     21.5f,     23.2f,     25.0f,     26.5f,     28.1f,     29.7f,     31.5f,
         34.1f,     36.9f,     40.0f,     43.1f,     46.4f,     50.0f,     54.0f,     58.3f,

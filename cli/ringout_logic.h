@@ -52,7 +52,7 @@ typedef struct {
     int   stable_frames;     /* consecutive ring-free frames required before raising */
     int   narrow_skip;       /* is_narrow_peak: skip */
     int   narrow_span;       /* is_narrow_peak: span */
-    float narrow_min_db;     /* is_narrow_peak: min advantage over neighbours */
+    float narrow_min_db;     /* is_narrow_peak: min advantage over neighbors */
 } RingoutConfig;
 
 typedef struct {
@@ -73,7 +73,7 @@ typedef struct {
     float margin_db;         /* gain-before-feedback margin achieved (cur - start) */
 } RingoutState;
 
-/* Initialise state from config. cfg is copied; sane fields are required (e.g.
+/* Initialize state from config. cfg is copied; sane fields are required (e.g.
  * step_db > 0, ceiling_db >= start_gain_db). The bus is assumed to already be at
  * cfg.start_gain_db when the loop begins. */
 void ringout_init(RingoutState *st, const RingoutConfig *cfg);

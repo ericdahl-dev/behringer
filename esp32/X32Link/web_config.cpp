@@ -178,7 +178,7 @@ if(curSlot>maxSlot){curSlot=maxSlot;hSlot.value=maxSlot}renderSlots()});
 renderSlots();
 var bpmEl=document.getElementById('bpm'),beatEl=document.getElementById('beat');
 var seedBpm=parseFloat(bpmEl.textContent)||0,beatTimer=null,shownBpm=-1;
-// Free-running fallback blink (pre-LNK-022 behaviour) — used whenever the
+// Free-running fallback blink (pre-LNK-022 behavior) — used whenever the
 // server says phase isn't valid yet (sync gap / no source). Unchanged.
 function setBeat(bpm){if(beatTimer){clearInterval(beatTimer);beatTimer=null}
 if(bpm>0){beatTimer=setInterval(function(){beatEl.classList.add('on');setTimeout(function(){beatEl.classList.remove('on')},90)},60000/bpm)}}

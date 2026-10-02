@@ -7,7 +7,7 @@ void setUp(void)    { beat_synth_reset(&s); }
 void tearDown(void) {}
 
 void test_fresh_state_fires_on_first_step_past_interval(void) {
-    // Matches the old inline behaviour: static last=0, a large millis() reading
+    // Matches the old inline behavior: static last=0, a large millis() reading
     // is >= one interval so the first observed beat fires.
     TEST_ASSERT_TRUE(beat_synth_step(&s, 1000, 120.0f));  // interval 500, 1000-0 >= 500
 }

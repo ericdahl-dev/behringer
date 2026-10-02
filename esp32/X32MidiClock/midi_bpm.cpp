@@ -5,7 +5,7 @@
 #include <Arduino.h>
 
 void midi_bpm_init() {
-    // nothing to initialise — state lives in midi_clock module
+    // nothing to initialize — state lives in midi_clock module
 }
 
 float midi_bpm_update() {
