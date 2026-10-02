@@ -1,11 +1,11 @@
 // Distinguishes a narrow feedback ring from broadband content (e.g. a vocal
-// formant): a real ring towers over its neighbours a few bins out. Ported from
+// formant): a real ring towers over its neighbors a few bins out. Ported from
 // cli/toast_logic.c (is_narrow_peak).
 
 public enum NarrownessFilter {
     /// True if `bins[peakBin]` is at least `minDB` above the average of the
-    /// neighbour bins sampled `skip+1 … skip+span` positions away on each side
-    /// (clamped to the array). Needs ≥1 neighbour on each side, else false.
+    /// neighbor bins sampled `skip+1 … skip+span` positions away on each side
+    /// (clamped to the array). Needs ≥1 neighbor on each side, else false.
     public static func isNarrowPeak(bins: [Float], peakBin: Int,
                                     skip: Int = 2, span: Int = 3, minDB: Float = 10.0) -> Bool {
         let n = bins.count

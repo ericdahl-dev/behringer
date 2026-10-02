@@ -16,7 +16,7 @@ with a handoff:
   **static notch profile + the measured gain-before-feedback margin**.
 - **Reactive (protect)** — starts *from that profile* (static notches pre-placed)
   and dynamically defends the remaining margin during the show. This is the
-  existing ToastSaver behaviour, plus a new "load a profile at startup" step.
+  existing ToastSaver behavior, plus a new "load a profile at startup" step.
 
 > The proactive pass *produces* what the reactive pass *consumes*. "React as
 > planned" = the planned notches are already in when the show starts; live mode

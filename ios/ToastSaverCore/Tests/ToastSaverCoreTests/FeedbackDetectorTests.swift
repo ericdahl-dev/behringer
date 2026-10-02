@@ -38,7 +38,7 @@ final class FeedbackDetectorTests: XCTestCase {
         var b = flat(); b[idx] = spike; return b
     }
 
-    // narrowSkip=1, narrowSpan=1: a spike with at least 1 clear neighbour each side qualifies.
+    // narrowSkip=1, narrowSpan=1: a spike with at least 1 clear neighbor each side qualifies.
     private func makeDetector(confirm: Int = 3) -> FeedbackDetector {
         FeedbackDetector(threshold: 20.0, confirmFrames: confirm,
                          narrowSkip: 1, narrowSpan: 1, narrowMinDB: 5.0)

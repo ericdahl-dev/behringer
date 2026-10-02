@@ -21,7 +21,7 @@ public struct RingoutConfig {
     public var cutDB: Float
     /// Consecutive frames a ring must persist before a notch fires.
     public var confirmFrames: Int
-    /// Frames to wait at current gain after any raise or notch before analysing.
+    /// Frames to wait at current gain after any raise or notch before analyzing.
     public var settleFrames: Int
     /// Consecutive ring-free frames required before raising gain.
     public var stableFrames: Int
@@ -29,7 +29,7 @@ public struct RingoutConfig {
     public var narrowSkip: Int
     /// Narrowness gate: bins to sample beyond the skip zone on each side.
     public var narrowSpan: Int
-    /// Narrowness gate: peak must exceed neighbour average by at least this many dB.
+    /// Narrowness gate: peak must exceed neighbor average by at least this many dB.
     public var narrowMinDB: Float
 
     public init(
@@ -147,17 +147,17 @@ public final class RingoutController {
             return .backOff(to: currentGainDB)
         }
 
-        // Settling: hold until the system stabilises after a raise or notch.
+        // Settling: hold until the system stabilizes after a raise or notch.
         if phase == .settle {
             if settleCount > 0 { settleCount -= 1; return .hold }
-            // Settle complete — fall through and analyse this frame.
+            // Settle complete — fall through and analyze this frame.
             phase        = .analyze
             confirmCount = 0
             confirmBin   = -1
             stableCount  = 0
         }
 
-        // Analyse: look for a narrow ring.
+        // Analyze: look for a narrow ring.
         guard let peakIndex = PeakDetector.detectPeak(
             bins: geqLevels, baseline: baseline, threshold: config.thresholdDB)
         else {

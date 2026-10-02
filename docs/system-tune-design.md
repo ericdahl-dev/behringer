@@ -55,7 +55,7 @@ generator and writes the GEQ.
 1. **Mains response EQ** — pink noise → measure at a mic → flatten LR GEQ to the
    target curve.
 2. **Per-monitor** — optionally pink-flatten each wedge, **then ring it out**
-   (the current work) to maximise gain-before-feedback.
+   (the current work) to maximize gain-before-feedback.
 3. **Report** — final EQ curves + per-monitor headroom margins (and reuse the
    ring-out profile format from `T-024`).
 

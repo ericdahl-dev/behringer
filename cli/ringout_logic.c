@@ -44,7 +44,7 @@ RingoutAction ringout_step(RingoutState *st, const float *bins, const float *bas
     }
 
     /* A notch placed last step takes priority: back the gain off and re-settle
-     * before analysing again, so the notch can take effect. */
+     * before analyzing again, so the notch can take effect. */
     if (st->pending_backoff) {
         st->pending_backoff = 0;
         st->cur_gain_db -= st->cfg.step_db;
@@ -57,7 +57,7 @@ RingoutAction ringout_step(RingoutState *st, const float *bins, const float *bas
         return a;
     }
 
-    /* Settle: ignore frame content until the system has stabilised. */
+    /* Settle: ignore frame content until the system has stabilized. */
     if (st->phase == RO_PHASE_SETTLE) {
         if (st->settle_count > 0) {
             st->settle_count--;
@@ -67,10 +67,10 @@ RingoutAction ringout_step(RingoutState *st, const float *bins, const float *bas
         st->confirm_count = 0;
         st->confirm_bin   = -1;
         st->stable_count  = 0;
-        /* fall through and analyse this frame */
+        /* fall through and analyze this frame */
     }
 
-    /* Analyse: is there a narrow ring? */
+    /* Analyze: is there a narrow ring? */
     int peak;
     int found  = detect_peak(bins, baseline, st->cfg.threshold_db, &peak);
     int narrow = found && is_narrow_peak(bins, RTA_BINS, peak,

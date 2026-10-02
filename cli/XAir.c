@@ -121,7 +121,7 @@ static void handle_fx_type(int slot) {
 }
 
 static void handle_fx_par(int slot) {
-    /* echo the set command back to caller (X32 behaviour) */
+    /* echo the set command back to caller (X32 behavior) */
     memcpy(s_buf, r_buf, r_len);
     s_len = r_len;
     xsend((struct sockaddr *)&client_ip, client_ip_len);

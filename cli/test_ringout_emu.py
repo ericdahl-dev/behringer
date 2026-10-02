@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """T-025 / T-032 ring-out safety harness: a mock X32 that models the feedback
 loop and asserts the ring-out control loop's safety properties (ceiling, notch,
-restore, abort). No audio — feedback is modelled as a function of commanded
+restore, abort). No audio — feedback is modeled as a function of commanded
 bus gain via a pluggable RoomModel.
 
 Run:

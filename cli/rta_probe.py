@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live /meters/4 RTA peak-bin probe for X32/XAir — field tool for T-027.
 
-Subscribe to the 100-bin RTA, print the peak bin (and its modelled frequency
+Subscribe to the 100-bin RTA, print the peak bin (and its modeled frequency
 from cli/rta_bins.c). Use with a known tone to verify the bin->Hz table:
 a 1 kHz pistonphone must light bin 56; a console sine sweep verifies the rest.
 
@@ -15,7 +15,7 @@ if not IP:
     sys.exit("usage: rta_probe.py <xr18_ip> [seconds]")
 PORT = 10024
 
-# modelled bin->Hz, parsed from the C table so the two never drift
+# modeled bin->Hz, parsed from the C table so the two never drift
 try:
     txt = pathlib.Path(__file__).with_name("rta_bins.c").read_text()
     BIN_FREQ = [float(x) for x in re.findall(r"([0-9]+\.[0-9]+)f", txt)[:100]]
