@@ -3,10 +3,13 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1D4F6D7CAD1C5DF9159D567C /* ConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512313863419ED59B2BC8A77 /* ConfigView.swift */; };
+		2847AA25339ED529D467FF3B /* SpectrumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F7C5FECB51DEAFB3A4C0F84 /* SpectrumView.swift */; };
+		63583F505AF870FE88302778 /* DetectorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBF679D01FC72FDA9F727BFC /* DetectorViewModel.swift */; };
 		AA000000000000000000001A /* ToastSaverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001001A /* ToastSaverApp.swift */; };
 		AA000000000000000000002A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001002A /* ContentView.swift */; };
 		AA000000000000000000003A /* AudioCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001003A /* AudioCaptureEngine.swift */; };
@@ -18,9 +21,13 @@
 		AA000000000000000000009A /* ToastSaverCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA000000000000000004002A /* ToastSaverCore */; };
 		AA00000000000000000000BA /* NotchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001008A /* NotchController.swift */; };
 		AA00000000000000000000CA /* MixerConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000001009A /* MixerConnection.swift */; };
+		EC6C500CB02465C5ABDB9E01 /* RingoutSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4A04E2E70DAAA1F4D141D1 /* RingoutSession.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		512313863419ED59B2BC8A77 /* ConfigView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConfigView.swift; sourceTree = "<group>"; };
+		5F7C5FECB51DEAFB3A4C0F84 /* SpectrumView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpectrumView.swift; sourceTree = "<group>"; };
+		8B4A04E2E70DAAA1F4D141D1 /* RingoutSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RingoutSession.swift; sourceTree = "<group>"; };
 		AA000000000000000001001A /* ToastSaverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastSaverApp.swift; sourceTree = "<group>"; };
 		AA000000000000000001002A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA000000000000000001003A /* AudioCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureEngine.swift; sourceTree = "<group>"; };
@@ -32,6 +39,7 @@
 		AA000000000000000001009A /* MixerConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerConnection.swift; sourceTree = "<group>"; };
 		AA000000000000000003001A /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
 		AA000000000000000003002A /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		FBF679D01FC72FDA9F727BFC /* DetectorViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DetectorViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,7 +56,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		AA000000000000000002001A /* MainGroup */ = {
+		AA000000000000000002001A = {
 			isa = PBXGroup;
 			children = (
 				AA000000000000000006001A /* ToastSaver */,
@@ -68,6 +76,10 @@
 				AA000000000000000001008A /* NotchController.swift */,
 				AA000000000000000001009A /* MixerConnection.swift */,
 				AA000000000000000001006A /* Assets.xcassets */,
+				8B4A04E2E70DAAA1F4D141D1 /* RingoutSession.swift */,
+				5F7C5FECB51DEAFB3A4C0F84 /* SpectrumView.swift */,
+				512313863419ED59B2BC8A77 /* ConfigView.swift */,
+				FBF679D01FC72FDA9F727BFC /* DetectorViewModel.swift */,
 			);
 			path = ToastSaver;
 			sourceTree = "<group>";
@@ -171,6 +183,10 @@
 				AA000000000000000000005A /* XR18Connection.swift in Sources */,
 				AA00000000000000000000BA /* NotchController.swift in Sources */,
 				AA00000000000000000000CA /* MixerConnection.swift in Sources */,
+				EC6C500CB02465C5ABDB9E01 /* RingoutSession.swift in Sources */,
+				2847AA25339ED529D467FF3B /* SpectrumView.swift in Sources */,
+				1D4F6D7CAD1C5DF9159D567C /* ConfigView.swift in Sources */,
+				63583F505AF870FE88302778 /* DetectorViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,10 +315,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 5HR8E5CWR7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens for feedback frequencies to protect the audience during toasts.";
@@ -315,7 +331,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.skeyelab.ToastSaver";
+				PRODUCT_BUNDLE_IDENTIFIER = com.skeyelab.ToastSaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -328,10 +344,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 5HR8E5CWR7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens for feedback frequencies to protect the audience during toasts.";
@@ -344,7 +360,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.skeyelab.ToastSaver";
+				PRODUCT_BUNDLE_IDENTIFIER = com.skeyelab.ToastSaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -385,11 +401,10 @@
 /* Begin XCSwiftPackageProductDependency section */
 		AA000000000000000004002A /* ToastSaverCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA000000000000000004001A /* XCLocalSwiftPackageReference "../ToastSaverCore" */;
+			package = AA000000000000000004001A /* XCLocalSwiftPackageReference "ToastSaverCore" */;
 			productName = ToastSaverCore;
 		};
 /* End XCSwiftPackageProductDependency section */
-
 	};
 	rootObject = AA000000000000000000010A /* Project object */;
 }
